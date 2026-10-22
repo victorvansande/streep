@@ -1,4 +1,4 @@
-// KSA Streepkarton - Sleek & Ultra-Fast Mobile Client with Mini-Leaderboard & Cara Rouge
+// Streep KSA Herentals - Sleek & Ultra-Fast Mobile Client
 
 const CLOUD_CHANNEL = 'ksa_streep_2026_victorvansande';
 
@@ -59,7 +59,6 @@ let currentPendingAction = null;
 let currentPinInput = '';
 let selectedDrinkId = localStorage.getItem('ksa_selected_drink') || 'pintje';
 let targetMemberForDrink = null;
-let sseConnection = null;
 
 // Audio context
 let audioCtx = null;
@@ -299,33 +298,24 @@ function renderMiniLeaderboard() {
 
   if (sorted.length === 0) {
     container.innerHTML = `
-      <div class="podium-empty-hint">
-        🍺 De strijd om de Gouden Pint ligt nog open! Trek het eerste streepje!
+      <div class="podium-empty-hint" style="color: #8c7358; font-style: italic; font-size: 13px; padding: 6px 0; text-align: center;">
+        Nog geen gegevens
       </div>
     `;
     return;
   }
 
   const medals = ['🥇', '🥈', '🥉'];
-  const titles = ['1ste', '2de', '3de'];
   let html = '';
 
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < Math.min(3, sorted.length); i++) {
     const member = sorted[i];
-    if (member) {
+    if (member && (member.tallies || 0) > 0) {
       html += `
         <div class="podium-pill ${i === 0 ? 'rank-1' : ''}">
           <span class="podium-medal">${medals[i]}</span>
           <span class="podium-name">${member.name}</span>
           <span class="podium-count">${member.tallies} strepen</span>
-        </div>
-      `;
-    } else {
-      html += `
-        <div class="podium-pill" style="opacity: 0.5;">
-          <span class="podium-medal">${medals[i]}</span>
-          <span class="podium-name" style="font-size: 11px;">Nog vrij</span>
-          <span class="podium-count">0</span>
         </div>
       `;
     }
@@ -486,12 +476,49 @@ function removeFromOutbox(eventId) {
   } catch (e) {}
 }
 
+function isLiveConnected() {
+  return typeof navigator !== 'undefined' && navigator.onLine && mqttClient && mqttClient.connected;
+}
+
+function requireLiveConnection() {
+  if (!isLiveConnected()) {
+    showToast('⚠️ Geen verbinding! Zet 4G of wifi aan om te strepen.', '⚠️');
+    playErrorTone();
+    triggerHaptic('heavy');
+    return false;
+  }
+  return true;
+}
+
+function updateTallyButtonsLockState() {
+  const connected = isLiveConnected();
+  const quickBeer = document.getElementById('btnMyQuickBeer');
+  const quickFive = document.getElementById('btnMyQuickFive');
+
+  if (quickBeer) {
+    quickBeer.style.opacity = connected ? '1' : '0.45';
+    quickBeer.style.cursor = connected ? 'pointer' : 'not-allowed';
+    quickBeer.title = connected ? '' : 'Geen verbinding - zet 4G of wifi aan';
+  }
+  if (quickFive) {
+    quickFive.style.opacity = connected ? '1' : '0.45';
+    quickFive.style.cursor = connected ? 'pointer' : 'not-allowed';
+    quickFive.title = connected ? '' : 'Geen verbinding - zet 4G of wifi aan';
+  }
+
+  document.querySelectorAll('.btn-row-add-pill').forEach(btn => {
+    btn.style.opacity = connected ? '1' : '0.45';
+    btn.style.cursor = connected ? 'pointer' : 'not-allowed';
+    btn.title = connected ? 'Streepje toevoegen' : 'Geen verbinding - zet 4G of wifi aan';
+  });
+}
+
 function updateOutboxStatusUI() {
   const pendingCount = getOutbox().length;
   if (pendingCount > 0) {
     updateCloudStatus('connecting', `${pendingCount} streepje(s) in wachtrij... (wordt verzonden)`);
   } else if (mqttClient && mqttClient.connected) {
-    updateCloudStatus('connected', 'Live Gesynchroniseerd (Realtime wolk)');
+    updateCloudStatus('connected', 'Live verbonden');
   }
 }
 
@@ -532,8 +559,8 @@ function updateCloudStatus(status, text) {
     banner.style.background = '#ecfdf5';
     banner.style.borderColor = '#a7f3d0';
     banner.style.color = '#047857';
-    txt.textContent = text || 'Live Gesynchroniseerd (Realtime wolk)';
-    if (sub) sub.textContent = '🟢 Realtime';
+    txt.textContent = text || 'Live verbonden';
+    if (sub) sub.textContent = '🟢 Live';
   } else if (status === 'connecting') {
     if (dot) {
       dot.className = 'live-pulse-dot connecting';
@@ -543,7 +570,7 @@ function updateCloudStatus(status, text) {
     banner.style.background = '#fffbeb';
     banner.style.borderColor = '#fde68a';
     banner.style.color = '#b45309';
-    txt.textContent = text || 'Verbinding maken met wolk...';
+    txt.textContent = text || 'Verbinding controleren...';
     if (sub) sub.textContent = '🟡 Bezig';
   } else {
     if (dot) {
@@ -554,9 +581,11 @@ function updateCloudStatus(status, text) {
     banner.style.background = '#fef2f2';
     banner.style.borderColor = '#fecaca';
     banner.style.color = '#b91c1c';
-    txt.textContent = text || 'Offline (wijzigingen lokaal bewaard)';
+    txt.textContent = text || (!navigator.onLine ? 'Geen verbinding (4G of wifi staat uit)' : 'Verbinding verbroken (opnieuw verbinden...)');
     if (sub) sub.textContent = '🔴 Offline';
   }
+
+  updateTallyButtonsLockState();
 }
 
 function broadcastStateRequest() {
@@ -710,7 +739,7 @@ function connectCloudSync() {
   isConnecting = true;
 
   const brokerUrl = MQTT_BROKERS[currentBrokerIdx];
-  updateCloudStatus('connecting', 'Verbinding maken met Live Wolk...');
+  updateCloudStatus('connecting', 'Verbinding controleren...');
 
   try {
     mqttClient = window.mqtt.connect(brokerUrl, {
@@ -723,11 +752,11 @@ function connectCloudSync() {
 
     mqttClient.on('connect', () => {
       isConnecting = false;
-      updateCloudStatus('connected', 'Live Gesynchroniseerd (Realtime wolk)');
+      updateCloudStatus('connected', 'Live verbonden');
 
       mqttClient.subscribe([TOPIC_EVENTS, TOPIC_STATE, TOPIC_REQ], { qos: 1 }, (err) => {
         if (!err) {
-          // Verzend eventuele wachtende streepjes uit de broekzak direct naar de cloud!
+          // Verzend eventuele wachtende streepjes direct
           flushOutbox();
           // Vraag de laatste stand op
           broadcastStateRequest();
@@ -758,16 +787,23 @@ function connectCloudSync() {
       console.warn('MQTT fout op broker:', brokerUrl, err);
       isConnecting = false;
       currentBrokerIdx = (currentBrokerIdx + 1) % MQTT_BROKERS.length;
-      updateCloudStatus('connecting', 'Wissel naar reserve wolk...');
+      updateCloudStatus('connecting', 'Verbinding herstellen...');
     });
 
     mqttClient.on('offline', () => {
       isConnecting = false;
-      updateCloudStatus('connecting', 'Verbinding herstellen...');
+      updateCloudStatus(!navigator.onLine ? 'offline' : 'connecting');
+    });
+
+    mqttClient.on('close', () => {
+      isConnecting = false;
+      if (!isLiveConnected()) {
+        updateCloudStatus(!navigator.onLine ? 'offline' : 'connecting');
+      }
     });
 
     mqttClient.on('reconnect', () => {
-      updateCloudStatus('connecting', 'Opnieuw verbinden...');
+      updateCloudStatus('connecting', 'Verbinding herstellen...');
     });
   } catch (err) {
     isConnecting = false;
@@ -777,7 +813,9 @@ function connectCloudSync() {
 }
 
 async function fetchCloudHistory() {
-  broadcastStateRequest();
+  if (mqttClient && mqttClient.connected) {
+    broadcastStateRequest();
+  }
 }
 
 // Compact Turven SVG Generator
@@ -865,12 +903,14 @@ function renderMembers() {
     const euro = (m.tallies * (state.pricePerTally || 1.0)).toFixed(2).replace('.', ',');
     const pinWarning = !m.hasPin ? `<span class="member-row-pin-status needs-setup" onclick="event.stopPropagation(); window.app.openSetupPinModal('${m.id}')" title="Tik om PIN in te stellen">⚠️ Stel PIN in</span>` : '';
 
-    // Show medal badge if top 3
-    const rankIndex = sortedRanks.findIndex(r => r.id === m.id);
+    // Geen medaille tenzij lid effectief > 0 strepen heeft en in top 3 staat
     let medalTag = '';
-    if (rankIndex === 0) medalTag = '🥇 ';
-    else if (rankIndex === 1) medalTag = '🥈 ';
-    else if (rankIndex === 2) medalTag = '🥉 ';
+    if ((m.tallies || 0) > 0) {
+      const rankIndex = sortedRanks.findIndex(r => r.id === m.id);
+      if (rankIndex === 0) medalTag = '🥇 ';
+      else if (rankIndex === 1) medalTag = '🥈 ';
+      else if (rankIndex === 2) medalTag = '🥉 ';
+    }
 
     html += `
       <div class="member-row ${isMe ? 'is-current-user' : ''}" data-id="${m.id}">
@@ -970,12 +1010,15 @@ function renderStats() {
   grid.innerHTML = html;
 
   const sorted = [...state.members].sort((a, b) => (b.tallies || 0) - (a.tallies || 0));
+  const hasLeaderboard = state.members.some(m => (m.tallies || 0) > 0);
   const boardEl = document.getElementById('leaderboardList');
   let boardHtml = '';
 
   sorted.forEach((m, idx) => {
     const medals = ['🥇', '🥈', '🥉'];
-    const rank = medals[idx] || `#${idx + 1}`;
+    const count = m.tallies || 0;
+    // Zet bij NIEMAND een medaille tot er effectief een leaderboard is en het lid > 0 strepen heeft
+    const rank = (hasLeaderboard && count > 0 && idx < 3) ? medals[idx] : `#${idx + 1}`;
     
     // Bereken het detailoverzicht van gedronken drankjes voor dit lid
     const consumed = [];
@@ -1075,11 +1118,11 @@ function generatePdfReport() {
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(16);
-  doc.text('KSA STREEPKARTON - TOTALE VERREKENING', 14, 15);
+  doc.text('STREEP KSA HERENTALS - TOTALE VERREKENING', 14, 15);
 
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Periode: ${state.title || 'Streepkarton'} | Datum opmaak: ${new Date().toLocaleDateString('nl-BE')} om ${new Date().toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}`, 14, 21);
+  doc.text(`Periode: ${state.title || 'Streep KSA Herentals'} | Datum opmaak: ${new Date().toLocaleDateString('nl-BE')} om ${new Date().toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}`, 14, 21);
 
   doc.setFillColor(250, 243, 232);
   doc.setDrawColor(206, 183, 153);
@@ -1142,7 +1185,7 @@ function generatePdfReport() {
   doc.setFont('helvetica', 'italic');
   doc.text('Gelieve het openstaande bedrag over te schrijven naar de KSA leidingrekening of via Payconiq.', 14, Math.min(285, finalY + 10));
 
-  const filename = `KSA_Streepkarton_Afrekening_${new Date().toISOString().slice(0, 10)}.pdf`;
+  const filename = `Streep_KSA_Herentals_Afrekening_${new Date().toISOString().slice(0, 10)}.pdf`;
   doc.save(filename);
   showToast('PDF Verrekening gedownload! 📄', '📄');
 }
@@ -1173,6 +1216,7 @@ window.app = {
   },
 
   quickAddOne: (memberId) => {
+    if (!requireLiveConnection()) return;
     const member = state.members.find(m => m.id === memberId);
     if (!member) return;
 
@@ -1239,6 +1283,7 @@ window.app = {
 
   adminTally: async (memberId, count) => {
     if (!adminPassword) return;
+    if (!requireLiveConnection()) return;
     const currentDrink = getSelectedDrink();
     publishCloudEvent({
       type: 'tally',
@@ -1371,6 +1416,11 @@ async function submitPinAction(pin) {
     return;
   }
 
+  if (!requireLiveConnection()) {
+    closePinModal();
+    return;
+  }
+
   const currentDrink = getSelectedDrink();
 
   publishCloudEvent({
@@ -1434,7 +1484,12 @@ async function submitNewPin() {
       pinHash: pin1
     });
 
-    saveStoredUser({ id: member.id, name: member.name, pin: pin1 });
+    // Enkel opslaan als actieve gebruiker van deze gsm als er nog GEEN actieve gebruiker was,
+    // of als de eigenaar van deze gsm zelf zijn eigen pin instelde.
+    // Zodat als iemand anders tijdelijk op jouw gsm turft, de gsm jouw naam permanent onthoudt!
+    if (!activeUser || activeUser.id === member.id) {
+      saveStoredUser({ id: member.id, name: member.name, pin: pin1 });
+    }
   }
 
   playSuccessChime();
@@ -1473,6 +1528,7 @@ function closeDrinkModal() {
 }
 
 function directTally(memberId, count, drinkId, memberName, drinkName) {
+  if (!requireLiveConnection()) return;
   publishCloudEvent({
     type: 'tally',
     memberId,
@@ -1576,6 +1632,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Quick Action Buttons (1-TAP ON PHONE)
   document.getElementById('btnMyQuickBeer').addEventListener('click', () => {
+    if (!requireLiveConnection()) return;
     if (activeUser) {
       const member = state.members.find(m => m.id === activeUser.id);
       if (member && !member.hasPin) {
@@ -1590,6 +1647,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('btnMyQuickFive').addEventListener('click', () => {
+    if (!requireLiveConnection()) return;
     if (activeUser) {
       const member = state.members.find(m => m.id === activeUser.id);
       if (member && !member.hasPin) {
@@ -1774,5 +1832,15 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       connectCloudSync();
     }
+  });
+
+  // Offline / Online netwerkdetectie (bv. 4G uit of hersteld)
+  window.addEventListener('online', () => {
+    updateCloudStatus('connecting', 'Verbinding herstellen...');
+    connectCloudSync();
+  });
+
+  window.addEventListener('offline', () => {
+    updateCloudStatus('offline', 'Geen verbinding (4G of wifi staat uit)');
   });
 });
