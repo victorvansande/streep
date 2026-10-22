@@ -45,6 +45,8 @@ function verifyAdminPassword(pwd) {
 const DEFAULT_DRINKS = [
   { id: 'pintje', name: 'Pintje', icon: '🍺', price: 1.0 },
   { id: 'cara_rouge', name: 'Cara Rouge', icon: '🍒', price: 1.0 },
+  { id: 'ice_tea', name: 'Ice Tea', icon: '🍹', price: 1.0 },
+  { id: 'ice_tea_green', name: 'Ice Tea Green', icon: '🍃', price: 1.0 },
   { id: 'cola', name: 'Cola', icon: '🥤', price: 1.0 },
   { id: 'cola_zero', name: 'Cola Zero', icon: '🥤', price: 1.0 },
   { id: 'fanta', name: 'Fanta', icon: '🍊', price: 1.0 },

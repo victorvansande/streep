@@ -17,6 +17,18 @@
       "price": 1
     },
     {
+      "id": "ice_tea",
+      "name": "Ice Tea",
+      "icon": "🍹",
+      "price": 1
+    },
+    {
+      "id": "ice_tea_green",
+      "name": "Ice Tea Green",
+      "icon": "🍃",
+      "price": 1
+    },
+    {
       "id": "cola",
       "name": "Cola",
       "icon": "🥤",

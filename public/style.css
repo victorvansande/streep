@@ -472,7 +472,6 @@ body {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  cursor: pointer;
 }
 
 .member-row-name {
@@ -494,6 +493,7 @@ body {
 .member-row-pin-status.needs-setup {
   color: #dc2626;
   font-weight: 700;
+  cursor: pointer;
 }
 
 /* Compact Turfstreepjes Area */
@@ -504,7 +504,6 @@ body {
   align-items: center;
   gap: 4px 6px;
   min-height: 28px;
-  cursor: pointer;
   overflow: hidden;
 }
 
@@ -586,6 +585,25 @@ body {
 }
 
 .btn-row-add-pill:active {
+  transform: scale(0.93);
+  background: #edd8be;
+}
+
+.btn-row-drink-pill {
+  background: #fdfaf5;
+  border: 1.5px solid #baa284;
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  transition: transform 0.1s ease;
+}
+
+.btn-row-drink-pill:active {
   transform: scale(0.93);
   background: #edd8be;
 }

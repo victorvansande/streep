@@ -8,10 +8,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="manifest" href="./manifest.json">
-  <link rel="stylesheet" href="./style.css?v=3.2">
+  <link rel="stylesheet" href="./style.css?v=3.3">
   <!-- jsPDF and autoTable for instant PDF downloads -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <!-- QRious for instant offline client-side QR Code generation -->
+  <script src="./qrious.min.js"></script>
   <!-- MQTT for ultra-fast, filter-proof live WebSocket cloud sync -->
   <script src="./mqtt.min.js"></script>
 </head>
@@ -128,44 +130,40 @@
     </div>
   </div>
 
-  <!-- Settlement / Afrekening View -->
-  <div class="board-wrapper" id="tabSettle" style="display: none;">
-    <div class="board-card" style="padding: 16px;">
-      <h3 style="font-size: 16px; margin-bottom: 6px; font-weight: 800;">💰 Afrekening & Verrekening</h3>
-      <p style="font-size: 12px; color: #705b45; margin-bottom: 14px;">1 streepje = € 1,00. Download hier de officiële PDF of deel via WhatsApp.</p>
-
-      <button class="btn-pdf-download" id="btnDownloadPdf">
-        <span>📄 Download PDF Verrekening</span>
-      </button>
-
-      <button class="btn-whatsapp-share" id="btnShareWhatsApp">
-        <span>📲 Deel Overzicht via WhatsApp</span>
-      </button>
-
-      <div id="settleList" style="margin: 14px 0;"></div>
-
-      <div style="border-top: 1px dashed #ceb799; padding-top: 12px; margin-top: 10px;">
-        <p style="font-size: 12px; color: #705b45; margin-bottom: 8px;">Nieuwe periode starten? Alle tellers gaan naar 0 en vorig karton wordt opgeslagen.</p>
-        <button class="btn-reset-karton" id="btnNewKarton">
-          📦 Start Nieuw Streepkarton
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Admin Panel View -->
+  <!-- Admin Panel View (Inclusief Afrekening & Verrekening) -->
   <div class="board-wrapper" id="tabAdmin" style="display: none;">
     <div class="board-card" style="padding: 16px;">
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
-        <h3 style="font-size: 17px; font-weight: 800; color: #991b1b;">⚙️ Adminpaneel</h3>
-        <span style="font-size: 11px; background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 999px; font-weight: 800;">Ingelogd</span>
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; border-bottom: 1.5px solid #eddcc6; padding-bottom: 10px;">
+        <h3 style="font-size: 18px; font-weight: 800; color: #991b1b; display: flex; align-items: center; gap: 6px;">
+          <span>⚙️</span> Adminpaneel &amp; Afrekening
+        </h3>
+        <span style="font-size: 11px; background: #fee2e2; color: #991b1b; padding: 3px 10px; border-radius: 999px; font-weight: 800;">Ingelogd</span>
       </div>
 
-      <button class="btn-pdf-download" id="btnAdminDownloadPdf" style="margin-bottom: 14px;">
-        <span>📄 Download PDF Afrekening (A4)</span>
-      </button>
+      <!-- Afrekening & PDF Export (Exclusief voor Admin) -->
+      <div style="background: #fffdf9; border: 1.5px solid #d8c2a7; border-radius: 18px; padding: 14px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.03);">
+        <h4 style="font-size: 15px; font-weight: 800; margin-bottom: 4px; color: #291a0e; display: flex; align-items: center; gap: 6px;">
+          <span>💰</span> Afrekening &amp; Verrekening
+        </h4>
+        <p style="font-size: 12px; color: #705b45; margin-bottom: 12px;">1 streepje = € 1,00. Download hier de officiële PDF verrekening voor de kas.</p>
 
-      <div style="background: #fff5f5; border: 1.5px solid #f87171; border-radius: 16px; padding: 12px; margin-bottom: 14px;">
+        <button class="btn-pdf-download" id="btnAdminDownloadPdf" style="margin-bottom: 12px;">
+          <span>📄 Download PDF Afrekening (A4)</span>
+        </button>
+
+        <div style="font-size: 12px; font-weight: 700; color: #5a4025; margin-bottom: 6px;">Overzicht per leiding / bezoeker:</div>
+        <div id="settleList" style="background: #faf4eb; border: 1px solid #e0cdb6; border-radius: 14px; max-height: 35vh; overflow-y: auto; padding: 4px 10px; margin-bottom: 12px;"></div>
+
+        <div style="border-top: 1px dashed #ceb799; padding-top: 10px;">
+          <p style="font-size: 11.5px; color: #705b45; margin-bottom: 6px;">Nieuwe periode starten? Alle tellers gaan naar 0 en het vorig karton wordt gereset.</p>
+          <button class="btn-reset-karton" id="btnNewKarton">
+            📦 Start Nieuw Streepkarton
+          </button>
+        </div>
+      </div>
+
+      <!-- Strepen Wissen -->
+      <div style="background: #fff5f5; border: 1.5px solid #f87171; border-radius: 18px; padding: 14px; margin-bottom: 16px;">
         <strong style="font-size: 13px; color: #991b1b; display: block; margin-bottom: 4px;">⚠️ Strepen Wissen</strong>
         <p style="font-size: 11px; color: #7f1d1d; margin-bottom: 8px;">Zet alle streepjes van iedereen in 1 klik op 0.</p>
         <button class="btn-reset-karton" id="btnAdminClearAll" style="padding: 10px; font-size: 13px; margin: 0;">
@@ -173,16 +171,19 @@
         </button>
       </div>
 
-      <h4 style="font-size: 14px; font-weight: 800; margin-bottom: 8px; color: #291a0e;">Leden & Bezoekers Beheren</h4>
-      <div style="background: #faf4eb; border: 1px solid #d8c2a7; border-radius: 16px; max-height: 40vh; overflow-y: auto; margin-bottom: 14px;" id="adminMembersList">
-        <!-- Injected member rows with admin buttons -->
-      </div>
+      <!-- Leden & Bezoekers Beheren -->
+      <div style="background: #fffdf9; border: 1.5px solid #d8c2a7; border-radius: 18px; padding: 14px; margin-bottom: 16px;">
+        <h4 style="font-size: 14px; font-weight: 800; margin-bottom: 8px; color: #291a0e;">👥 Leden &amp; Bezoekers Beheren</h4>
+        <div style="background: #faf4eb; border: 1px solid #d8c2a7; border-radius: 14px; max-height: 35vh; overflow-y: auto; margin-bottom: 12px;" id="adminMembersList">
+          <!-- Injected member rows with admin buttons -->
+        </div>
 
-      <div style="background: #fdfaf5; border: 1px solid #d8c2a7; border-radius: 16px; padding: 12px; margin-bottom: 14px;">
-        <strong style="font-size: 13px; color: #3f2a15; display: block; margin-bottom: 6px;">➕ Nieuw Lid / Bezoeker Toevoegen</strong>
-        <div style="display: flex; gap: 6px;">
-          <input type="text" id="inputNewMemberName" class="search-input-pill" placeholder="Naam leiding of bezoeker..." style="flex: 1;">
-          <button class="btn-primary-action" id="btnAddMemberSubmit" style="width: auto; padding: 8px 16px; font-size: 13px;">Toevoegen</button>
+        <div style="background: #fdfaf5; border: 1px solid #d8c2a7; border-radius: 14px; padding: 10px;">
+          <strong style="font-size: 12.5px; color: #3f2a15; display: block; margin-bottom: 6px;">➕ Nieuw Lid of Bezoeker Toevoegen</strong>
+          <div style="display: flex; gap: 6px;">
+            <input type="text" id="inputNewMemberName" class="search-input-pill" placeholder="Naam leiding of bezoeker..." style="flex: 1;">
+            <button class="btn-primary-action" id="btnAddMemberSubmit" style="width: auto; padding: 8px 16px; font-size: 13px;">Toevoegen</button>
+          </div>
         </div>
       </div>
     </div>
@@ -190,20 +191,20 @@
 
   <!-- QR / Connect View -->
   <div class="board-wrapper" id="tabConnect" style="display: none;">
-    <div class="board-card" style="padding: 18px; text-align: center;">
-      <h3 style="font-size: 16px; margin-bottom: 6px; font-weight: 800;">📱 Verbind je Smartphone</h3>
-      <p style="font-size: 12px; color: #705b45; margin-bottom: 14px;">Scan met je iPhone of Android camera om live mee te turven:</p>
+    <div class="board-card" style="padding: 22px 16px; text-align: center;">
+      <h3 style="font-size: 18px; margin-bottom: 6px; font-weight: 800;">📱 Verbind je Smartphone</h3>
+      <p style="font-size: 13px; color: #705b45; margin-bottom: 18px;">Scan met de camera van je iPhone of Android om live mee te turven:</p>
       
-      <div style="background: white; padding: 12px; border-radius: 16px; width: fit-content; margin: 0 auto 12px auto; border: 1px solid #ceb799;">
-        <img id="qrCodeImg" style="width: 200px; height: 200px; display: block;" alt="QR Code">
+      <div style="background: white; padding: 14px; border-radius: 20px; width: fit-content; margin: 0 auto 16px auto; border: 1.5px solid #d8c3a5; box-shadow: 0 4px 16px rgba(0,0,0,0.06);">
+        <img id="qrCodeImg" style="width: 240px; height: 240px; display: block; image-rendering: pixelated; margin: 0 auto;" alt="QR Code">
       </div>
 
-      <p style="font-size: 13px; font-weight: 700; color: #1e3a8a;">
+      <p style="font-size: 13px; font-weight: 700; color: #1e3a8a; word-break: break-all; max-width: 380px; margin: 0 auto;">
         <a id="qrUrlLink" href="#" target="_blank" style="color: inherit; text-decoration: underline;">...</a>
       </p>
 
-      <div style="margin-top: 14px; font-size: 12px; color: #553e28; background: #fdf5ea; padding: 10px; border-radius: 12px;">
-        💡 <strong>Tip:</strong> Tik in Safari/Chrome op <em>'Zet op beginscherm'</em> voor een echte schermvullende app zonder browserbalk!
+      <div style="margin-top: 18px; font-size: 12px; color: #553e28; background: #fdf5ea; padding: 12px; border-radius: 14px; border: 1px solid #ebd9c2; max-width: 420px; margin-left: auto; margin-right: auto; line-height: 1.5;">
+        💡 <strong>Tip voor leiding:</strong> Tik in Safari of Chrome op <em>'Zet op beginscherm'</em> (of 'App installeren') voor een echte schermvullende app zonder browserbalk!
       </div>
     </div>
   </div>
@@ -217,10 +218,6 @@
     <button class="nav-tab-btn" data-tab="tabStats">
       <span class="nav-icon">📊</span>
       <span>Verbruik</span>
-    </button>
-    <button class="nav-tab-btn" data-tab="tabSettle">
-      <span class="nav-icon">💰</span>
-      <span>Afrekenen</span>
     </button>
     <button class="nav-tab-btn" data-tab="tabAdmin" id="navBtnAdmin">
       <span class="nav-icon">⚙️</span>
@@ -420,6 +417,6 @@
     <span id="toastText">Streepje getrokken!</span>
   </div>
 
-  <script src="./app.js?v=3.2"></script>
+  <script src="./app.js?v=3.3"></script>
 </body>
 </html>

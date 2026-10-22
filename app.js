@@ -34,6 +34,8 @@ const DEFAULT_MEMBERS = [
 const DEFAULT_DRINKS = [
   { id: 'pintje', name: 'Pintje', icon: '🍺', price: 1.0 },
   { id: 'cara_rouge', name: 'Cara Rouge', icon: '🍒', price: 1.0 },
+  { id: 'ice_tea', name: 'Ice Tea', icon: '🍹', price: 1.0 },
+  { id: 'ice_tea_green', name: 'Ice Tea Green', icon: '🍃', price: 1.0 },
   { id: 'cola', name: 'Cola', icon: '🥤', price: 1.0 },
   { id: 'cola_zero', name: 'Cola Zero', icon: '🥤', price: 1.0 },
   { id: 'fanta', name: 'Fanta', icon: '🍊', price: 1.0 },
@@ -271,9 +273,15 @@ function loadLocalState() {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.members && parsed.members.length > 0) {
         state = parsed;
-        // Ensure Cara Rouge is present in loaded state
+        // Ensure Cara Rouge, Ice Tea and Ice Tea Green are present in loaded state
         if (!state.drinks.some(d => d.id === 'cara_rouge')) {
           state.drinks.splice(1, 0, { id: 'cara_rouge', name: 'Cara Rouge', icon: '🍒', price: 1.0 });
+        }
+        if (!state.drinks.some(d => d.id === 'ice_tea')) {
+          state.drinks.splice(2, 0, { id: 'ice_tea', name: 'Ice Tea', icon: '🍹', price: 1.0 });
+        }
+        if (!state.drinks.some(d => d.id === 'ice_tea_green')) {
+          state.drinks.splice(3, 0, { id: 'ice_tea_green', name: 'Ice Tea Green', icon: '🍃', price: 1.0 });
         }
       }
     }
@@ -306,7 +314,7 @@ function renderMiniLeaderboard() {
     const member = sorted[i];
     if (member) {
       html += `
-        <div class="podium-pill ${i === 0 ? 'rank-1' : ''}" onclick="window.app.quickAddOne('${member.id}')">
+        <div class="podium-pill ${i === 0 ? 'rank-1' : ''}">
           <span class="podium-medal">${medals[i]}</span>
           <span class="podium-name">${member.name}</span>
           <span class="podium-count">${member.tallies} strepen</span>
@@ -760,7 +768,7 @@ function renderMembers() {
   filtered.forEach((m, idx) => {
     const isMe = activeUser && activeUser.id === m.id;
     const euro = (m.tallies * (state.pricePerTally || 1.0)).toFixed(2).replace('.', ',');
-    const pinWarning = !m.hasPin ? `<span class="member-row-pin-status needs-setup">⚠️ Stel PIN in</span>` : '';
+    const pinWarning = !m.hasPin ? `<span class="member-row-pin-status needs-setup" onclick="event.stopPropagation(); window.app.openSetupPinModal('${m.id}')" title="Tik om PIN in te stellen">⚠️ Stel PIN in</span>` : '';
 
     // Show medal badge if top 3
     const rankIndex = sortedRanks.findIndex(r => r.id === m.id);
@@ -771,21 +779,22 @@ function renderMembers() {
 
     html += `
       <div class="member-row ${isMe ? 'is-current-user' : ''}" data-id="${m.id}">
-        <div class="member-info-col" onclick="window.app.onMemberNameTap('${m.id}')">
+        <div class="member-info-col">
           <span class="member-row-name">${medalTag}${m.name}</span>
           ${pinWarning}
         </div>
 
-        <div class="member-turf-col" onclick="window.app.onMemberRowTap('${m.id}')">
+        <div class="member-turf-col">
           ${renderTurvenSvgCompact(m.tallies || 0, idx + 1)}
         </div>
 
         <div class="member-actions-col">
-          <div class="member-count-badge" onclick="window.app.onMemberNameTap('${m.id}')">
+          <div class="member-count-badge">
             <span class="badge-count">${m.tallies}</span>
             <span class="badge-euro">€${euro}</span>
           </div>
-          <button class="btn-row-add-pill" onclick="window.app.quickAddOne('${m.id}')" title="Streepje zetten">+1</button>
+          <button class="btn-row-add-pill" onclick="event.stopPropagation(); window.app.quickAddOne('${m.id}')" title="Streepje toevoegen">+1</button>
+          <button class="btn-row-drink-pill" onclick="event.stopPropagation(); window.app.openDrinkPicker('${m.id}')" title="Kies drankje">🥤</button>
         </div>
       </div>
     `;
@@ -1057,21 +1066,19 @@ window.app = {
   },
 
   onMemberNameTap: (memberId) => {
-    if (adminPassword) {
-      window.app.adminTally(memberId, 1);
-      return;
-    }
-    const member = state.members.find(m => m.id === memberId);
-    if (!member) return;
-    if (!member.hasPin) {
-      openSetupPinModal(memberId);
-      return;
-    }
-    openDrinkPicker(memberId);
+    // Geen actie bij tikken op de rij om perongeluk turven tijdens scrollen te voorkomen
   },
 
   onMemberRowTap: (memberId) => {
-    window.app.quickAddOne(memberId);
+    // Geen actie bij scrollen over de turfstreepjes
+  },
+
+  openSetupPinModal: (memberId) => {
+    openSetupPinModal(memberId);
+  },
+
+  openDrinkPicker: (memberId) => {
+    openDrinkPicker(memberId);
   },
 
   adminTally: async (memberId, count) => {
@@ -1340,9 +1347,34 @@ async function initApp() {
 
   connectCloudSync();
   fetchCloudHistory();
+  generateQrCode();
+}
 
-  document.getElementById('qrUrlLink').href = window.location.href;
-  document.getElementById('qrUrlLink').textContent = window.location.href;
+function generateQrCode() {
+  const currentUrl = window.location.href;
+  const linkEl = document.getElementById('qrUrlLink');
+  const imgEl = document.getElementById('qrCodeImg');
+  if (linkEl) {
+    linkEl.href = currentUrl;
+    linkEl.textContent = currentUrl;
+  }
+  if (!imgEl) return;
+
+  try {
+    if (typeof QRious !== 'undefined') {
+      const qr = new QRious({
+        value: currentUrl,
+        size: 260,
+        level: 'M'
+      });
+      imgEl.src = qr.toDataURL();
+      return;
+    }
+  } catch (e) {
+    console.warn('QRious fout:', e);
+  }
+
+  imgEl.src = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(currentUrl)}`;
 }
 
 // Event Listeners
@@ -1478,13 +1510,17 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.nav-tab-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
 
-      ['tabKarton', 'tabStats', 'tabSettle', 'tabAdmin', 'tabConnect'].forEach(id => {
-        document.getElementById(id).style.display = id === targetId ? 'block' : 'none';
+      ['tabKarton', 'tabStats', 'tabAdmin', 'tabConnect'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = id === targetId ? 'block' : 'none';
       });
 
       if (targetId === 'tabStats') renderStats();
-      if (targetId === 'tabSettle') renderSettle();
-      if (targetId === 'tabAdmin') renderAdminMemberList();
+      if (targetId === 'tabAdmin') {
+        renderAdminMemberList();
+        renderSettle();
+      }
+      if (targetId === 'tabConnect') generateQrCode();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   });
@@ -1552,9 +1588,9 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast(`${name} toegevoegd!`, '➕');
   });
 
-  // PDF Downloads
-  document.getElementById('btnDownloadPdf').addEventListener('click', generatePdfReport);
-  document.getElementById('btnAdminDownloadPdf').addEventListener('click', generatePdfReport);
+  // PDF Download (in Admin paneel)
+  const btnPdf = document.getElementById('btnAdminDownloadPdf');
+  if (btnPdf) btnPdf.addEventListener('click', generatePdfReport);
 
   // Keypad
   document.querySelectorAll('.keypad-btn[data-num]').forEach(btn => {
@@ -1579,23 +1615,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnCloseSetupPin').addEventListener('click', closeSetupPinModal);
   document.getElementById('btnSubmitNewPin').addEventListener('click', submitNewPin);
   document.getElementById('btnCloseDrinkModal').addEventListener('click', closeDrinkModal);
-
-  // WhatsApp
-  document.getElementById('btnShareWhatsApp').addEventListener('click', () => {
-    let msg = `🍺 *KSA STREEPKARTON AFREKENING*\n`;
-    msg += `Totaal: *${state.totalTallies} strepen* (= € ${state.totalTallies},00)\n`;
-    msg += `--------------------------------\n`;
-
-    const activeList = [...state.members].filter(m => (m.tallies || 0) > 0).sort((a, b) => b.tallies - a.tallies);
-    activeList.forEach(m => {
-      msg += `• *${m.name}*: ${m.tallies} strepen (€ ${m.tallies},00)\n`;
-    });
-
-    msg += `--------------------------------\n`;
-    msg += `Gelieve te betalen via overschrijving of Payconiq! 🍻`;
-
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
-  });
 
   // Reset Karton
   document.getElementById('btnNewKarton').addEventListener('click', () => {
