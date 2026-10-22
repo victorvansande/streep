@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <script>
     // Force cache bust if new version released (e.g. homescreen / Safari cache)
-    const APP_BUILD_VERSION = '4.1';
+    const APP_BUILD_VERSION = '4.2';
     try {
       const saved = localStorage.getItem('ksa_app_build_version');
       if (saved !== APP_BUILD_VERSION) {
@@ -24,7 +24,7 @@
     } catch (e) {}
   </script>
   <link rel="manifest" href="./manifest.json">
-  <link rel="stylesheet" href="./style.css?v=4.1">
+  <link rel="stylesheet" href="./style.css?v=4.2">
   <!-- jsPDF and autoTable for instant PDF downloads (deferred for maximum page speed) -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -331,7 +331,7 @@
     </div>
   </div>
 
-  <!-- Modal: Pincode Bevestigen (Numeric Keypad) -->
+  <!-- Modal: Pincode Bevestigen (Systeemtoetsenbord) -->
   <div class="modal-overlay" id="pinModal">
     <div class="bottom-sheet" id="pinSheet">
       <div class="sheet-handle"></div>
@@ -345,27 +345,23 @@
         <div class="pin-sub-label" id="pinTargetSub">Geef jouw 4-cijferige pincode in</div>
       </div>
 
-      <div class="pin-dots-row">
-        <div class="pin-dot" id="dot0"></div>
-        <div class="pin-dot" id="dot1"></div>
-        <div class="pin-dot" id="dot2"></div>
-        <div class="pin-dot" id="dot3"></div>
+      <div style="max-width: 240px; margin: 10px auto 16px auto;">
+        <input 
+          type="password" 
+          pattern="[0-9]*" 
+          inputmode="numeric" 
+          maxlength="4" 
+          id="inputPinConfirm" 
+          class="search-input-pill" 
+          style="text-align: center; font-size: 26px; letter-spacing: 8px; font-weight: 800; padding: 12px 10px;" 
+          placeholder="••••"
+          autocomplete="off"
+        >
       </div>
 
-      <div class="keypad-grid">
-        <button class="keypad-btn" data-num="1">1</button>
-        <button class="keypad-btn" data-num="2">2</button>
-        <button class="keypad-btn" data-num="3">3</button>
-        <button class="keypad-btn" data-num="4">4</button>
-        <button class="keypad-btn" data-num="5">5</button>
-        <button class="keypad-btn" data-num="6">6</button>
-        <button class="keypad-btn" data-num="7">7</button>
-        <button class="keypad-btn" data-num="8">8</button>
-        <button class="keypad-btn" data-num="9">9</button>
-        <button class="keypad-btn action-btn" id="btnKeypadClear">Wis</button>
-        <button class="keypad-btn" data-num="0">0</button>
-        <button class="keypad-btn action-btn" id="btnKeypadBack">⌫</button>
-      </div>
+      <button class="btn-primary-action" id="btnSubmitPinConfirm" style="margin: 0; width: 100%; padding: 12px; font-size: 15px;">
+        ✓ Bevestigen
+      </button>
     </div>
   </div>
 
@@ -447,6 +443,6 @@
     <span id="toastText">Streepje getrokken!</span>
   </div>
 
-  <script defer src="./app.js?v=4.1"></script>
+  <script defer src="./app.js?v=4.2"></script>
 </body>
 </html>

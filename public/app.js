@@ -56,7 +56,6 @@ const processedEventIds = new Set();
 let activeUser = null; // { id, name, pin }
 let adminPassword = null;
 let currentPendingAction = null;
-let currentPinInput = '';
 let selectedDrinkId = localStorage.getItem('ksa_selected_drink') || 'pintje';
 let targetMemberForDrink = null;
 
@@ -1361,8 +1360,8 @@ function closeAddVisitorModal() {
 
 function openPinModal(action) {
   currentPendingAction = action;
-  currentPinInput = '';
-  updatePinDots();
+  const inputEl = document.getElementById('inputPinConfirm');
+  if (inputEl) inputEl.value = '';
 
   const member = state.members.find(m => m.id === action.memberId);
   document.getElementById('pinTargetName').textContent = member ? member.name : 'Leiding';
@@ -1376,39 +1375,39 @@ function openPinModal(action) {
   }
 
   document.getElementById('pinModal').classList.add('open');
+  setTimeout(() => {
+    if (inputEl) inputEl.focus();
+  }, 180);
 }
 
 function closePinModal() {
   document.getElementById('pinModal').classList.remove('open');
+  const inputEl = document.getElementById('inputPinConfirm');
+  if (inputEl) {
+    inputEl.value = '';
+    inputEl.blur();
+  }
   currentPendingAction = null;
-  currentPinInput = '';
-}
-
-function updatePinDots() {
-  for (let i = 0; i < 4; i++) {
-    const dot = document.getElementById(`dot${i}`);
-    if (i < currentPinInput.length) dot.classList.add('filled');
-    else dot.classList.remove('filled');
-  }
-}
-
-function handleKeypadTap(num) {
-  triggerHaptic('light');
-  if (currentPinInput.length < 4) {
-    currentPinInput += String(num);
-    updatePinDots();
-    if (currentPinInput.length === 4) {
-      setTimeout(() => submitPinAction(currentPinInput), 80);
-    }
-  }
 }
 
 async function submitPinAction(pin) {
   if (!currentPendingAction) return;
   const action = currentPendingAction;
 
+  const cleanPin = (pin || '').trim();
+  if (cleanPin.length !== 4 || !/^\d{4}$/.test(cleanPin)) {
+    handlePinError('Voer een 4-cijferige code in');
+    return;
+  }
+
+  const member = state.members.find(m => m.id === action.memberId);
+  if (member && member.hasPin && member.pinHash && member.pinHash !== cleanPin) {
+    handlePinError('Foutieve pincode!');
+    return;
+  }
+
   if (action.type === 'setActiveUser') {
-    saveStoredUser({ id: action.memberId, name: action.memberName, pin });
+    saveStoredUser({ id: action.memberId, name: action.memberName, pin: cleanPin });
     playSuccessChime();
     showToast(`Ingelogd als ${action.memberName}!`, '👋');
     closePinModal();
@@ -1442,8 +1441,11 @@ function handlePinError(message) {
   const sheet = document.getElementById('pinSheet');
   sheet.classList.add('shake');
   setTimeout(() => sheet.classList.remove('shake'), 400);
-  currentPinInput = '';
-  updatePinDots();
+  const inputEl = document.getElementById('inputPinConfirm');
+  if (inputEl) {
+    inputEl.value = '';
+    inputEl.focus();
+  }
   showToast(message, '❌');
 }
 
@@ -1779,24 +1781,29 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnPdf = document.getElementById('btnAdminDownloadPdf');
   if (btnPdf) btnPdf.addEventListener('click', generatePdfReport);
 
-  // Keypad
-  document.querySelectorAll('.keypad-btn[data-num]').forEach(btn => {
-    btn.addEventListener('click', () => handleKeypadTap(btn.getAttribute('data-num')));
-  });
+  // PIN Confirmation via native keyboard
+  const inputPinConfirm = document.getElementById('inputPinConfirm');
+  const btnSubmitPinConfirm = document.getElementById('btnSubmitPinConfirm');
 
-  document.getElementById('btnKeypadClear').addEventListener('click', () => {
-    triggerHaptic('light');
-    currentPinInput = '';
-    updatePinDots();
-  });
+  if (inputPinConfirm) {
+    inputPinConfirm.addEventListener('input', () => {
+      if (inputPinConfirm.value.length === 4) {
+        setTimeout(() => submitPinAction(inputPinConfirm.value), 60);
+      }
+    });
 
-  document.getElementById('btnKeypadBack').addEventListener('click', () => {
-    triggerHaptic('light');
-    if (currentPinInput.length > 0) {
-      currentPinInput = currentPinInput.slice(0, -1);
-      updatePinDots();
-    }
-  });
+    inputPinConfirm.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        submitPinAction(inputPinConfirm.value);
+      }
+    });
+  }
+
+  if (btnSubmitPinConfirm) {
+    btnSubmitPinConfirm.addEventListener('click', () => {
+      if (inputPinConfirm) submitPinAction(inputPinConfirm.value);
+    });
+  }
 
   document.getElementById('btnClosePinModal').addEventListener('click', closePinModal);
   document.getElementById('btnCloseSetupPin').addEventListener('click', closeSetupPinModal);
