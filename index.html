@@ -141,7 +141,11 @@
       <h3 style="font-size: 16px; margin-bottom: 12px; font-weight: 800;">📊 Drankjes Verbruik</h3>
       <div class="drinks-grid" id="statsDrinksGrid"></div>
 
-      <h3 style="font-size: 16px; margin: 18px 0 10px 0; font-weight: 800;">🏆 Volledige Rangschikking</h3>
+      <div style="display: flex; justify-content: space-between; align-items: baseline; margin: 20px 0 4px 0;">
+        <h3 style="font-size: 16px; font-weight: 800;">🏆 Rangschikking &amp; Consumpties</h3>
+        <span style="font-size: 11px; color: #8c6a46; font-weight: 600;">Tik op naam voor details</span>
+      </div>
+      <p style="font-size: 11.5px; color: #705b45; margin-bottom: 12px;">Tik op een naam om te zien welke drankjes (bv. 5 pinten, 2 cola zero, ...) die persoon geregistreerd heeft.</p>
       <div id="leaderboardList"></div>
     </div>
   </div>
@@ -178,6 +182,15 @@
         </div>
       </div>
 
+      <!-- Pincodes Resetten -->
+      <div style="background: #fffbeb; border: 1.5px solid #f59e0b; border-radius: 18px; padding: 14px; margin-bottom: 16px;">
+        <strong style="font-size: 13px; color: #b45309; display: block; margin-bottom: 4px;">🔑 Alle Pincodes Resetten</strong>
+        <p style="font-size: 11px; color: #92400e; margin-bottom: 8px;">Wis de pincode van iedereen zodat alle leiding en bezoekers verplicht opnieuw een eigen 4-cijferige pincode moeten instellen bij hun volgende streepje.</p>
+        <button class="btn-primary-action" id="btnAdminResetAllPins" style="background: #d97706; box-shadow: 0 2px 0 #b45309; padding: 10px; font-size: 13px; margin: 0; width: 100%;">
+          🔑 Reset Pincode van IEDEREEN
+        </button>
+      </div>
+
       <!-- Strepen Wissen -->
       <div style="background: #fff5f5; border: 1.5px solid #f87171; border-radius: 18px; padding: 14px; margin-bottom: 16px;">
         <strong style="font-size: 13px; color: #991b1b; display: block; margin-bottom: 4px;">⚠️ Strepen Wissen</strong>
@@ -187,10 +200,14 @@
         </button>
       </div>
 
-      <!-- Leden & Bezoekers Beheren -->
+      <!-- Leden & Bezoekers Beheren (Streepjes corrigeren / aftrekken) -->
       <div style="background: #fffdf9; border: 1.5px solid #d8c2a7; border-radius: 18px; padding: 14px; margin-bottom: 16px;">
-        <h4 style="font-size: 14px; font-weight: 800; margin-bottom: 8px; color: #291a0e;">👥 Leden &amp; Bezoekers Beheren</h4>
-        <div style="background: #faf4eb; border: 1px solid #d8c2a7; border-radius: 14px; max-height: 35vh; overflow-y: auto; margin-bottom: 12px;" id="adminMembersList">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+          <h4 style="font-size: 14px; font-weight: 800; color: #291a0e;">👥 Leden &amp; Streepjes Corrigeren</h4>
+          <span style="font-size: 10.5px; color: #b91c1c; font-weight: 700;">Tik op -1 om streepje te wissen</span>
+        </div>
+        <p style="font-size: 11px; color: #705b45; margin-bottom: 10px;">Heeft iemand per ongeluk te veel geturfd? Klik op <strong>-1</strong> bij die persoon om het teveel geturfde streepje meteen te wissen.</p>
+        <div style="background: #faf4eb; border: 1px solid #d8c2a7; border-radius: 14px; max-height: 38vh; overflow-y: auto; margin-bottom: 12px;" id="adminMembersList">
           <!-- Injected member rows with admin buttons -->
         </div>
 

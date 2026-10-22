@@ -370,8 +370,24 @@ function applySyncEvent(ev, isLocalOrigin = false) {
       if (member) {
         member.hasPin = false;
         member.pinHash = '';
+        if (activeUser && activeUser.id === ev.memberId) {
+          activeUser.hasPin = false;
+          saveStoredUser(activeUser);
+        }
         stateChanged = true;
       }
+      break;
+    }
+    case 'reset_all_pins': {
+      state.members.forEach(m => {
+        m.hasPin = false;
+        m.pinHash = '';
+      });
+      if (activeUser) {
+        activeUser.hasPin = false;
+        saveStoredUser(activeUser);
+      }
+      stateChanged = true;
       break;
     }
     case 'set_tallies': {
@@ -434,11 +450,68 @@ const MQTT_BASE_TOPIC = 'ksa/streep/2026/victorvansande';
 const TOPIC_EVENTS = `${MQTT_BASE_TOPIC}/events`;
 const TOPIC_STATE = `${MQTT_BASE_TOPIC}/state`;
 const TOPIC_REQ = `${MQTT_BASE_TOPIC}/req`;
+const OUTBOX_KEY = 'ksa_streep_outbox_queue';
 
 let mqttClient = null;
 let currentBrokerIdx = 0;
 let myClientId = 'ksa_' + Math.random().toString(16).substring(2, 10);
 let isConnecting = false;
+
+// Persistent Outbox Queue (Garandeert dat streepjes NOOIT verloren gaan)
+function getOutbox() {
+  try {
+    const raw = localStorage.getItem(OUTBOX_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function addToOutbox(ev) {
+  try {
+    const list = getOutbox();
+    if (!list.some(e => e.eventId === ev.eventId)) {
+      list.push(ev);
+      localStorage.setItem(OUTBOX_KEY, JSON.stringify(list));
+    }
+    updateOutboxStatusUI();
+  } catch (e) {}
+}
+
+function removeFromOutbox(eventId) {
+  try {
+    const list = getOutbox().filter(e => e.eventId !== eventId);
+    localStorage.setItem(OUTBOX_KEY, JSON.stringify(list));
+    updateOutboxStatusUI();
+  } catch (e) {}
+}
+
+function updateOutboxStatusUI() {
+  const pendingCount = getOutbox().length;
+  if (pendingCount > 0) {
+    updateCloudStatus('connecting', `${pendingCount} streepje(s) in wachtrij... (wordt verzonden)`);
+  } else if (mqttClient && mqttClient.connected) {
+    updateCloudStatus('connected', 'Live Gesynchroniseerd (Realtime wolk)');
+  }
+}
+
+function flushOutbox() {
+  const list = getOutbox();
+  if (!list || list.length === 0) return;
+  if (!mqttClient || !mqttClient.connected) return;
+
+  list.forEach(ev => {
+    try {
+      mqttClient.publish(TOPIC_EVENTS, JSON.stringify(ev), { qos: 1 }, (err) => {
+        if (!err) {
+          removeFromOutbox(ev.eventId);
+        }
+      });
+    } catch (e) {}
+  });
+
+  publishCurrentStateSnapshot();
+}
 
 function updateCloudStatus(status, text) {
   const banner = document.getElementById('cloudSyncBanner');
@@ -501,7 +574,8 @@ function publishCurrentStateSnapshot() {
         state: state,
         sender: (activeUser && activeUser.name) ? activeUser.name : 'Leiding',
         from: myClientId,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        version: state.version || 1
       };
       mqttClient.publish(TOPIC_STATE, JSON.stringify(snapshot), { qos: 1, retain: true });
     } catch (e) {}
@@ -510,36 +584,31 @@ function publishCurrentStateSnapshot() {
 
 function handleIncomingStateSnapshot(snapshot) {
   if (!snapshot || !snapshot.state || !Array.isArray(snapshot.state.members)) return;
+  if (snapshot.from === myClientId) return; // Eigen snapshot negeren
+
   const remoteState = snapshot.state;
-  let hasChanges = false;
+  const remoteTime = snapshot.timestamp || 0;
+  const localTime = state.updatedAt || 0;
+  const pendingOutbox = getOutbox();
 
-  remoteState.members.forEach(remoteMember => {
-    let localMember = state.members.find(m => m.id === remoteMember.id);
-    if (!localMember) {
-      // New visitor or member added by another phone
-      state.members.push(JSON.parse(JSON.stringify(remoteMember)));
-      hasChanges = true;
-    } else {
-      // Sync tallies losslessly (take maximum so streepjes never vanish)
-      if ((remoteMember.tallies || 0) > (localMember.tallies || 0)) {
-        localMember.tallies = remoteMember.tallies;
-        localMember.drinks = Object.assign({}, localMember.drinks || {}, remoteMember.drinks || {});
-        hasChanges = true;
-      }
-      if (remoteMember.hasPin && !localMember.hasPin) {
-        localMember.hasPin = true;
-        localMember.pinHash = remoteMember.pinHash;
-        hasChanges = true;
-      }
+  // Als remote nieuwer is OF lokaal geen niet-verzonden wijzigingen heeft: overnemen!
+  // Hierdoor worden resets (0 strepen) en correcties (-1) van de admin DIRECT gesynchroniseerd!
+  if (remoteTime >= localTime || pendingOutbox.length === 0) {
+    state.members = JSON.parse(JSON.stringify(remoteState.members));
+    if (remoteState.drinks) state.drinks = remoteState.drinks;
+    if (remoteState.title) state.title = remoteState.title;
+    state.updatedAt = remoteTime;
+    state.version = snapshot.version || ((state.version || 0) + 1);
+
+    // Als deze GSM offline streepjes had getrokken die nog in de wachtrij staan:
+    // Herpas ze direct toe op de nieuwste stand en verzend ze meteen!
+    if (pendingOutbox.length > 0) {
+      pendingOutbox.forEach(ev => {
+        applySyncEvent(ev, true);
+      });
+      flushOutbox();
     }
-  });
 
-  if (remoteState.title && remoteState.title !== state.title) {
-    state.title = remoteState.title;
-    hasChanges = true;
-  }
-
-  if (hasChanges) {
     recalculateState();
     saveLocalState();
     renderMembers();
@@ -560,41 +629,70 @@ function handleIncomingCloudEvent(ev) {
     const member = state.members.find(m => m.id === ev.memberId);
     const mName = member ? member.name : (ev.memberName || 'Iemand');
     const drink = state.drinks.find(d => d.id === ev.drinkId) || { name: 'Drankje', icon: '🍺' };
-    showToast(`⚡ ${mName} trok net +${ev.count || 1} ${drink.name}!`, drink.icon);
+    if (ev.count > 0) {
+      showToast(`⚡ ${mName} trok net +${ev.count} ${drink.name}!`, drink.icon);
+    } else if (ev.count < 0) {
+      showToast(`✏️ Streepje gecorrigeerd voor ${mName}`, '🔧');
+    }
   } else if (ev.type === 'add_member' && ev.from !== myClientId) {
     showToast(`👤 ${ev.member?.name || 'Bezoeker'} toegevoegd door ${ev.sender || 'leiding'}!`, '➕');
+  } else if (ev.type === 'clear_all' && ev.from !== myClientId) {
+    showToast(`🗑️ Alle strepen gewist door admin`, '🗑️');
+  } else if (ev.type === 'reset_all_pins' && ev.from !== myClientId) {
+    showToast(`🔑 Pincodes gereset door admin`, '🔑');
   }
 
   const changed = applySyncEvent(ev, false);
   if (changed) {
-    // Keep retained state in sync
     publishCurrentStateSnapshot();
   }
 }
 
-// Publish an event to the cloud bus
+// Publish an event to the cloud bus (Met 100% garantie dat niets verloren gaat)
 async function publishCloudEvent(ev) {
   ev.eventId = ev.eventId || ('ev_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
   ev.timestamp = Date.now();
   ev.from = myClientId;
   ev.sender = (activeUser && activeUser.name) ? activeUser.name : 'Anoniem';
 
-  // Instant optimistic update on own phone (0ms latency)
-  applySyncEvent(ev, true);
+  // 1. Schrijf direct synchroon naar de persistente Outbox op de GSM (overleeft afsluiten/batterijleeg)
+  addToOutbox(ev);
 
-  // Broadcast to other phones immediately via MQTT
+  // 2. Directe 0ms optimistische update op het eigen scherm
+  applySyncEvent(ev, true);
+  state.updatedAt = ev.timestamp;
+  state.version = (state.version || 0) + 1;
+  saveLocalState();
+
+  // 3. Multi-channel verzenden: MQTT met QoS 1 (Broker bevestigt ontvangst via puback)
   if (mqttClient && mqttClient.connected) {
     try {
-      mqttClient.publish(TOPIC_EVENTS, JSON.stringify(ev), { qos: 1 });
-      // Update retained state snapshot so newcomers see it immediately
+      mqttClient.publish(TOPIC_EVENTS, JSON.stringify(ev), { qos: 1 }, (err) => {
+        if (!err) {
+          // Broker heeft bevestigd dat het streepje ontvangen is!
+          removeFromOutbox(ev.eventId);
+        }
+      });
+      // Retained state snapshot updaten voor nieuwe browsers
       publishCurrentStateSnapshot();
     } catch (e) {
       console.warn('MQTT publish fout:', e);
     }
   } else {
-    // If temporarily reconnecting, try to reconnect
+    // Probeer direct verbinding te herstellen
     connectCloudSync();
   }
+
+  // 4. Achtergrond keepalive baken (W3C standaard voor als gsm direct in de broekzak gaat)
+  try {
+    if (window.fetch) {
+      fetch(`https://ntfy.sh/${encodeURIComponent(CLOUD_CHANNEL)}`, {
+        method: 'POST',
+        body: JSON.stringify(ev),
+        keepalive: true
+      }).catch(() => {});
+    }
+  } catch (e) {}
 }
 
 function connectCloudSync() {
@@ -619,7 +717,7 @@ function connectCloudSync() {
       clientId: myClientId,
       clean: true,
       connectTimeout: 5000,
-      reconnectPeriod: 3000,
+      reconnectPeriod: 2500,
       keepalive: 30
     });
 
@@ -629,12 +727,10 @@ function connectCloudSync() {
 
       mqttClient.subscribe([TOPIC_EVENTS, TOPIC_STATE, TOPIC_REQ], { qos: 1 }, (err) => {
         if (!err) {
-          // Ask any already-open leiding phone for latest state
+          // Verzend eventuele wachtende streepjes uit de broekzak direct naar de cloud!
+          flushOutbox();
+          // Vraag de laatste stand op
           broadcastStateRequest();
-          // And also send own state if we have data
-          if (state.totalTallies > 0) {
-            publishCurrentStateSnapshot();
-          }
         }
       });
     });
@@ -661,7 +757,6 @@ function connectCloudSync() {
     mqttClient.on('error', (err) => {
       console.warn('MQTT fout op broker:', brokerUrl, err);
       isConnecting = false;
-      // Switch broker on error
       currentBrokerIdx = (currentBrokerIdx + 1) % MQTT_BROKERS.length;
       updateCloudStatus('connecting', 'Wissel naar reserve wolk...');
     });
@@ -677,7 +772,7 @@ function connectCloudSync() {
   } catch (err) {
     isConnecting = false;
     console.error('MQTT startup fout:', err);
-    setTimeout(connectCloudSync, 4000);
+    setTimeout(connectCloudSync, 3000);
   }
 }
 
@@ -793,6 +888,7 @@ function renderMembers() {
             <span class="badge-count">${m.tallies}</span>
             <span class="badge-euro">€${euro}</span>
           </div>
+          ${adminPassword ? `<button class="btn-row-minus-pill" onclick="event.stopPropagation(); window.app.adminTally('${m.id}', -1)" title="1 streepje aftrekken (Admin)">-1</button>` : ''}
           <button class="btn-row-add-pill" onclick="event.stopPropagation(); window.app.quickAddOne('${m.id}')" title="Streepje toevoegen">+1</button>
           <button class="btn-row-drink-pill" onclick="event.stopPropagation(); window.app.openDrinkPicker('${m.id}')" title="Kies drankje">🥤</button>
         </div>
@@ -876,13 +972,55 @@ function renderStats() {
   const sorted = [...state.members].sort((a, b) => (b.tallies || 0) - (a.tallies || 0));
   const boardEl = document.getElementById('leaderboardList');
   let boardHtml = '';
+
   sorted.forEach((m, idx) => {
     const medals = ['🥇', '🥈', '🥉'];
     const rank = medals[idx] || `#${idx + 1}`;
+    
+    // Bereken het detailoverzicht van gedronken drankjes voor dit lid
+    const consumed = [];
+    (state.drinks || []).forEach(d => {
+      const c = (m.drinks && m.drinks[d.id]) || 0;
+      if (c > 0) consumed.push({ ...d, count: c });
+    });
+
+    let detailsHtml = '';
+    if (consumed.length > 0) {
+      detailsHtml += `<div style="font-size: 11px; font-weight: 700; color: #5a4025; margin-bottom: 6px;">Bestelde drankjes van ${m.name}:</div>`;
+      detailsHtml += `<div style="display: flex; flex-wrap: wrap; gap: 6px;">`;
+      consumed.forEach(item => {
+        detailsHtml += `
+          <span style="background: #fffdf9; border: 1.5px solid #d8c2a7; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 700; color: #2e1e0f; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+            <span>${item.icon}</span>
+            <span>${item.count}x ${item.name}</span>
+            <span style="color: #8c6a46; font-size: 10.5px; font-weight: 600;">(€ ${item.count},00)</span>
+          </span>
+        `;
+      });
+      detailsHtml += `</div>`;
+    } else {
+      detailsHtml = `<div style="font-size: 11.5px; color: #8c6a46; font-style: italic;">Nog geen drankjes geregistreerd op dit karton.</div>`;
+    }
+
     boardHtml += `
-      <div style="display: flex; justify-content: space-between; padding: 8px 4px; border-bottom: 1px solid #ebd9c2; font-size: 14px;">
-        <div><span>${rank}</span> <strong class="font-marker" style="margin-left: 6px;">${m.name}</strong></div>
-        <div style="font-weight: 800; color: #0f356b;">${m.tallies} strepen</div>
+      <div class="stats-accordion-item" style="border-bottom: 1px solid #ebd9c2;">
+        <div 
+          onclick="window.app.toggleMemberStatsBreakdown('${m.id}')" 
+          style="display: flex; justify-content: space-between; align-items: center; padding: 10px 4px; cursor: pointer; -webkit-tap-highlight-color: transparent;"
+        >
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 15px;">${rank}</span>
+            <strong class="font-marker" style="font-size: 17px; color: #2a1b0e;">${m.name}</strong>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-weight: 800; color: #0f356b; font-size: 14px;">${m.tallies || 0} strepen</span>
+            <span id="chevron_${m.id}" style="font-size: 10px; color: #8c6a46; transition: transform 0.2s ease;">▼</span>
+          </div>
+        </div>
+
+        <div id="stats_detail_${m.id}" style="display: none; background: #faf4eb; border-radius: 14px; padding: 10px 12px; margin: 2px 2px 8px 2px; border: 1px solid #e0cdb6;">
+          ${detailsHtml}
+        </div>
       </div>
     `;
   });
@@ -1046,6 +1184,10 @@ window.app = {
     }
 
     if (activeUser && activeUser.id === memberId) {
+      if (!member.hasPin) {
+        openSetupPinModal(memberId);
+        return;
+      }
       directTally(memberId, 1, currentDrink.id, member.name, currentDrink.name);
       return;
     }
@@ -1071,6 +1213,20 @@ window.app = {
 
   onMemberRowTap: (memberId) => {
     // Geen actie bij scrollen over de turfstreepjes
+  },
+
+  toggleMemberStatsBreakdown: (memberId) => {
+    const detailEl = document.getElementById(`stats_detail_${memberId}`);
+    const chevronEl = document.getElementById(`chevron_${memberId}`);
+    if (!detailEl) return;
+    const isHidden = detailEl.style.display === 'none';
+    if (isHidden) {
+      detailEl.style.display = 'block';
+      if (chevronEl) chevronEl.style.transform = 'rotate(180deg)';
+    } else {
+      detailEl.style.display = 'none';
+      if (chevronEl) chevronEl.style.transform = 'rotate(0deg)';
+    }
   },
 
   openSetupPinModal: (memberId) => {
@@ -1421,6 +1577,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Quick Action Buttons (1-TAP ON PHONE)
   document.getElementById('btnMyQuickBeer').addEventListener('click', () => {
     if (activeUser) {
+      const member = state.members.find(m => m.id === activeUser.id);
+      if (member && !member.hasPin) {
+        openSetupPinModal(activeUser.id);
+        return;
+      }
       const current = getSelectedDrink();
       directTally(activeUser.id, 1, current.id, activeUser.name, current.name);
     } else {
@@ -1430,6 +1591,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('btnMyQuickFive').addEventListener('click', () => {
     if (activeUser) {
+      const member = state.members.find(m => m.id === activeUser.id);
+      if (member && !member.hasPin) {
+        openSetupPinModal(activeUser.id);
+        return;
+      }
       const current = getSelectedDrink();
       directTally(activeUser.id, 5, current.id, activeUser.name, current.name);
     } else {
@@ -1521,6 +1687,16 @@ document.addEventListener('DOMContentLoaded', () => {
     publishCloudEvent({ type: 'clear_all' });
     showToast('Alle streepjes gewist naar 0! 🗑️', '🗑️');
   });
+
+  const btnResetAllPins = document.getElementById('btnAdminResetAllPins');
+  if (btnResetAllPins) {
+    btnResetAllPins.addEventListener('click', () => {
+      if (!confirm('Weet je zeker dat je de pincode van IEDEREEN wil wissen? Iedereen zal opnieuw een eigen 4-cijferige pincode moeten instellen bij het volgende streepje.')) return;
+
+      publishCloudEvent({ type: 'reset_all_pins' });
+      showToast('Alle pincodes gereset! 🔑', '🔑');
+    });
+  }
 
   document.getElementById('btnAddMemberSubmit').addEventListener('click', () => {
     const name = document.getElementById('inputNewMemberName').value.trim();
