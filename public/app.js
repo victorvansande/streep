@@ -459,7 +459,7 @@ function updateCloudStatus(status, text) {
     banner.style.background = '#ecfdf5';
     banner.style.borderColor = '#a7f3d0';
     banner.style.color = '#047857';
-    txt.textContent = text || 'Live Verbonden (Luna & Leiding realtime)';
+    txt.textContent = text || 'Live Gesynchroniseerd (Realtime wolk)';
     if (sub) sub.textContent = '🟢 Realtime';
   } else if (status === 'connecting') {
     if (dot) {
@@ -625,7 +625,7 @@ function connectCloudSync() {
 
     mqttClient.on('connect', () => {
       isConnecting = false;
-      updateCloudStatus('connected', 'Live Verbonden (Luna & Leiding realtime)');
+      updateCloudStatus('connected', 'Live Gesynchroniseerd (Realtime wolk)');
 
       mqttClient.subscribe([TOPIC_EVENTS, TOPIC_STATE, TOPIC_REQ], { qos: 1 }, (err) => {
         if (!err) {

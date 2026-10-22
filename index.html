@@ -7,8 +7,24 @@
   <meta name="theme-color" content="#f0e2cf">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <script>
+    // Force cache bust if new version released (e.g. homescreen / Safari cache)
+    const APP_BUILD_VERSION = '4.0';
+    try {
+      const saved = localStorage.getItem('ksa_app_build_version');
+      if (saved !== APP_BUILD_VERSION) {
+        localStorage.setItem('ksa_app_build_version', APP_BUILD_VERSION);
+        if (!window.location.search.includes('v=' + APP_BUILD_VERSION)) {
+          window.location.replace(window.location.pathname + '?v=' + APP_BUILD_VERSION);
+        }
+      }
+    } catch (e) {}
+  </script>
   <link rel="manifest" href="./manifest.json">
-  <link rel="stylesheet" href="./style.css?v=3.3">
+  <link rel="stylesheet" href="./style.css?v=4.0">
   <!-- jsPDF and autoTable for instant PDF downloads -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -417,6 +433,6 @@
     <span id="toastText">Streepje getrokken!</span>
   </div>
 
-  <script src="./app.js?v=3.3"></script>
+  <script src="./app.js?v=4.0"></script>
 </body>
 </html>
