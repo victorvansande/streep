@@ -417,77 +417,264 @@ function applySyncEvent(ev, isLocalOrigin = false) {
   return stateChanged;
 }
 
-// Publish an event to ntfy.sh cloud bus
-async function publishCloudEvent(ev) {
-  ev.eventId = ev.eventId || ('ev_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
-  ev.timestamp = Date.now();
+// --- LIVE MULTI-BROKER REALTIME CLOUD ENGINE (EMQX + HiveMQ WSS) ---
+const MQTT_BROKERS = [
+  'wss://broker.emqx.io:8084/mqtt',
+  'wss://broker.hivemq.com:8884/mqtt'
+];
+const MQTT_BASE_TOPIC = 'ksa/streep/2026/victorvansande';
+const TOPIC_EVENTS = `${MQTT_BASE_TOPIC}/events`;
+const TOPIC_STATE = `${MQTT_BASE_TOPIC}/state`;
+const TOPIC_REQ = `${MQTT_BASE_TOPIC}/req`;
 
-  applySyncEvent(ev, true);
+let mqttClient = null;
+let currentBrokerIdx = 0;
+let myClientId = 'ksa_' + Math.random().toString(16).substring(2, 10);
+let isConnecting = false;
 
-  try {
-    await fetch(`https://ntfy.sh/${encodeURIComponent(CLOUD_CHANNEL)}`, {
-      method: 'POST',
-      body: JSON.stringify(ev),
-      headers: { 'Title': 'KSA Streep' }
-    });
-  } catch (e) {
-    console.warn('Kon event niet naar ntfy sturen:', e);
+function updateCloudStatus(status, text) {
+  const banner = document.getElementById('cloudSyncBanner');
+  const dot = document.getElementById('cloudSyncDot');
+  const statusDot = document.getElementById('statusDot');
+  const txt = document.getElementById('cloudSyncText');
+  const sub = document.getElementById('cloudSyncSub');
+  if (!banner || !txt) return;
+
+  banner.style.display = 'flex';
+
+  if (status === 'connected') {
+    if (dot) {
+      dot.className = 'live-pulse-dot';
+      dot.style.background = '#10b981';
+    }
+    if (statusDot) statusDot.classList.remove('offline');
+    banner.style.background = '#ecfdf5';
+    banner.style.borderColor = '#a7f3d0';
+    banner.style.color = '#047857';
+    txt.textContent = text || 'Live Verbonden (Luna & Leiding realtime)';
+    if (sub) sub.textContent = '🟢 Realtime';
+  } else if (status === 'connecting') {
+    if (dot) {
+      dot.className = 'live-pulse-dot connecting';
+      dot.style.background = '#f59e0b';
+    }
+    if (statusDot) statusDot.classList.add('offline');
+    banner.style.background = '#fffbeb';
+    banner.style.borderColor = '#fde68a';
+    banner.style.color = '#b45309';
+    txt.textContent = text || 'Verbinding maken met wolk...';
+    if (sub) sub.textContent = '🟡 Bezig';
+  } else {
+    if (dot) {
+      dot.className = 'live-pulse-dot offline';
+      dot.style.background = '#ef4444';
+    }
+    if (statusDot) statusDot.classList.add('offline');
+    banner.style.background = '#fef2f2';
+    banner.style.borderColor = '#fecaca';
+    banner.style.color = '#b91c1c';
+    txt.textContent = text || 'Offline (wijzigingen lokaal bewaard)';
+    if (sub) sub.textContent = '🔴 Offline';
   }
 }
 
-// Connect to live SSE stream on ntfy.sh
+function broadcastStateRequest() {
+  if (mqttClient && mqttClient.connected) {
+    try {
+      mqttClient.publish(TOPIC_REQ, JSON.stringify({ from: myClientId, ts: Date.now() }), { qos: 0 });
+    } catch (e) {}
+  }
+}
+
+function publishCurrentStateSnapshot() {
+  if (mqttClient && mqttClient.connected) {
+    try {
+      const snapshot = {
+        state: state,
+        sender: (activeUser && activeUser.name) ? activeUser.name : 'Leiding',
+        from: myClientId,
+        timestamp: Date.now()
+      };
+      mqttClient.publish(TOPIC_STATE, JSON.stringify(snapshot), { qos: 1, retain: true });
+    } catch (e) {}
+  }
+}
+
+function handleIncomingStateSnapshot(snapshot) {
+  if (!snapshot || !snapshot.state || !Array.isArray(snapshot.state.members)) return;
+  const remoteState = snapshot.state;
+  let hasChanges = false;
+
+  remoteState.members.forEach(remoteMember => {
+    let localMember = state.members.find(m => m.id === remoteMember.id);
+    if (!localMember) {
+      // New visitor or member added by another phone
+      state.members.push(JSON.parse(JSON.stringify(remoteMember)));
+      hasChanges = true;
+    } else {
+      // Sync tallies losslessly (take maximum so streepjes never vanish)
+      if ((remoteMember.tallies || 0) > (localMember.tallies || 0)) {
+        localMember.tallies = remoteMember.tallies;
+        localMember.drinks = Object.assign({}, localMember.drinks || {}, remoteMember.drinks || {});
+        hasChanges = true;
+      }
+      if (remoteMember.hasPin && !localMember.hasPin) {
+        localMember.hasPin = true;
+        localMember.pinHash = remoteMember.pinHash;
+        hasChanges = true;
+      }
+    }
+  });
+
+  if (remoteState.title && remoteState.title !== state.title) {
+    state.title = remoteState.title;
+    hasChanges = true;
+  }
+
+  if (hasChanges) {
+    recalculateState();
+    saveLocalState();
+    renderMembers();
+    renderStats();
+    renderSettle();
+    renderAdminMemberList();
+    renderMiniLeaderboard();
+    updateMyQuickBanner();
+  }
+}
+
+function handleIncomingCloudEvent(ev) {
+  if (!ev || !ev.eventId) return;
+  if (processedEventIds.has(ev.eventId)) return;
+
+  // Show friendly live notification toast if someone else tallied
+  if (ev.type === 'tally' && ev.from !== myClientId) {
+    const member = state.members.find(m => m.id === ev.memberId);
+    const mName = member ? member.name : (ev.memberName || 'Iemand');
+    const drink = state.drinks.find(d => d.id === ev.drinkId) || { name: 'Drankje', icon: '🍺' };
+    showToast(`⚡ ${mName} trok net +${ev.count || 1} ${drink.name}!`, drink.icon);
+  } else if (ev.type === 'add_member' && ev.from !== myClientId) {
+    showToast(`👤 ${ev.member?.name || 'Bezoeker'} toegevoegd door ${ev.sender || 'leiding'}!`, '➕');
+  }
+
+  const changed = applySyncEvent(ev, false);
+  if (changed) {
+    // Keep retained state in sync
+    publishCurrentStateSnapshot();
+  }
+}
+
+// Publish an event to the cloud bus
+async function publishCloudEvent(ev) {
+  ev.eventId = ev.eventId || ('ev_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
+  ev.timestamp = Date.now();
+  ev.from = myClientId;
+  ev.sender = (activeUser && activeUser.name) ? activeUser.name : 'Anoniem';
+
+  // Instant optimistic update on own phone (0ms latency)
+  applySyncEvent(ev, true);
+
+  // Broadcast to other phones immediately via MQTT
+  if (mqttClient && mqttClient.connected) {
+    try {
+      mqttClient.publish(TOPIC_EVENTS, JSON.stringify(ev), { qos: 1 });
+      // Update retained state snapshot so newcomers see it immediately
+      publishCurrentStateSnapshot();
+    } catch (e) {
+      console.warn('MQTT publish fout:', e);
+    }
+  } else {
+    // If temporarily reconnecting, try to reconnect
+    connectCloudSync();
+  }
+}
+
 function connectCloudSync() {
-  if (sseConnection) return;
-  const sseUrl = `https://ntfy.sh/${encodeURIComponent(CLOUD_CHANNEL)}/sse`;
+  if (typeof window.mqtt === 'undefined') {
+    setTimeout(connectCloudSync, 400);
+    return;
+  }
+
+  if (mqttClient && mqttClient.connected) {
+    updateCloudStatus('connected');
+    return;
+  }
+
+  if (isConnecting) return;
+  isConnecting = true;
+
+  const brokerUrl = MQTT_BROKERS[currentBrokerIdx];
+  updateCloudStatus('connecting', 'Verbinding maken met Live Wolk...');
 
   try {
-    sseConnection = new EventSource(sseUrl);
+    mqttClient = window.mqtt.connect(brokerUrl, {
+      clientId: myClientId,
+      clean: true,
+      connectTimeout: 5000,
+      reconnectPeriod: 3000,
+      keepalive: 30
+    });
 
-    sseConnection.onopen = () => {
-      document.getElementById('statusDot').classList.remove('offline');
-      document.getElementById('cloudSyncBanner').style.display = 'flex';
-    };
+    mqttClient.on('connect', () => {
+      isConnecting = false;
+      updateCloudStatus('connected', 'Live Verbonden (Luna & Leiding realtime)');
 
-    sseConnection.onmessage = (e) => {
-      try {
-        const envelope = JSON.parse(e.data);
-        if (envelope.event === 'message' && envelope.message) {
-          const payload = JSON.parse(envelope.message);
-          applySyncEvent(payload, false);
+      mqttClient.subscribe([TOPIC_EVENTS, TOPIC_STATE, TOPIC_REQ], { qos: 1 }, (err) => {
+        if (!err) {
+          // Ask any already-open leiding phone for latest state
+          broadcastStateRequest();
+          // And also send own state if we have data
+          if (state.totalTallies > 0) {
+            publishCurrentStateSnapshot();
+          }
         }
-      } catch (err) {}
-    };
+      });
+    });
 
-    sseConnection.onerror = () => {
-      document.getElementById('statusDot').classList.add('offline');
-      if (sseConnection) {
-        sseConnection.close();
-        sseConnection = null;
+    mqttClient.on('message', (topic, payloadBuffer) => {
+      try {
+        const payloadStr = payloadBuffer.toString();
+        const data = JSON.parse(payloadStr);
+
+        if (topic === TOPIC_EVENTS) {
+          handleIncomingCloudEvent(data);
+        } else if (topic === TOPIC_STATE) {
+          handleIncomingStateSnapshot(data);
+        } else if (topic === TOPIC_REQ) {
+          if (data && data.from !== myClientId) {
+            publishCurrentStateSnapshot();
+          }
+        }
+      } catch (err) {
+        console.warn('Fout bij parsen MQTT bericht:', err);
       }
-      setTimeout(connectCloudSync, 4000);
-    };
-  } catch (e) {
-    setTimeout(connectCloudSync, 5000);
+    });
+
+    mqttClient.on('error', (err) => {
+      console.warn('MQTT fout op broker:', brokerUrl, err);
+      isConnecting = false;
+      // Switch broker on error
+      currentBrokerIdx = (currentBrokerIdx + 1) % MQTT_BROKERS.length;
+      updateCloudStatus('connecting', 'Wissel naar reserve wolk...');
+    });
+
+    mqttClient.on('offline', () => {
+      isConnecting = false;
+      updateCloudStatus('connecting', 'Verbinding herstellen...');
+    });
+
+    mqttClient.on('reconnect', () => {
+      updateCloudStatus('connecting', 'Opnieuw verbinden...');
+    });
+  } catch (err) {
+    isConnecting = false;
+    console.error('MQTT startup fout:', err);
+    setTimeout(connectCloudSync, 4000);
   }
 }
 
 async function fetchCloudHistory() {
-  try {
-    const res = await fetch(`https://ntfy.sh/${encodeURIComponent(CLOUD_CHANNEL)}/json?poll=1&since=30d`);
-    if (!res.ok) return;
-    const text = await res.text();
-    const lines = text.split('\n').filter(l => l.trim().length > 0);
-
-    lines.forEach(line => {
-      try {
-        const envelope = JSON.parse(line);
-        if (envelope.message) {
-          const ev = JSON.parse(envelope.message);
-          applySyncEvent(ev, false);
-        }
-      } catch (e) {}
-    });
-  } catch (e) {}
+  broadcastStateRequest();
 }
 
 // Compact Turven SVG Generator
@@ -1419,5 +1606,25 @@ document.addEventListener('DOMContentLoaded', () => {
     publishCloudEvent({ type: 'new_karton', title });
     showToast('Nieuw karton gestart!', '📦');
     document.querySelector('.nav-tab-btn[data-tab="tabKarton"]').click();
+  });
+
+  // Resume & Sync on Phone Unlock / Tab Switch
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      if (!mqttClient || !mqttClient.connected) {
+        connectCloudSync();
+      } else {
+        broadcastStateRequest();
+      }
+    }
+  });
+
+  // Re-check sync on window focus
+  window.addEventListener('focus', () => {
+    if (mqttClient && mqttClient.connected) {
+      broadcastStateRequest();
+    } else {
+      connectCloudSync();
+    }
   });
 });

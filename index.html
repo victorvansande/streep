@@ -8,10 +8,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="manifest" href="./manifest.json">
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./style.css?v=3.2">
   <!-- jsPDF and autoTable for instant PDF downloads -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <!-- MQTT for ultra-fast, filter-proof live WebSocket cloud sync -->
+  <script src="./mqtt.min.js"></script>
 </head>
 <body>
 
@@ -39,9 +41,12 @@
   </div>
 
   <!-- Cloud Sync Status Pill -->
-  <div id="cloudSyncBanner" style="display: none; background: #e0f2fe; border: 1px solid #7dd3fc; border-radius: 999px; margin: 6px auto; max-width: 580px; padding: 4px 14px; font-size: 11px; color: #0369a1; justify-content: space-between; align-items: center;">
-    <span>☁️ <strong id="cloudSyncText">Live Gesynchroniseerd</strong></span>
-    <span style="font-size: 10px; color: #0284c7;">ntfy cloud</span>
+  <div id="cloudSyncBanner" style="display: flex; background: #ecfdf5; border: 1.5px solid #a7f3d0; border-radius: 999px; margin: 6px auto; max-width: 580px; padding: 5px 14px; font-size: 11.5px; color: #047857; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+    <span style="display: flex; align-items: center; gap: 7px;">
+      <span class="live-pulse-dot" id="cloudSyncDot"></span>
+      <strong id="cloudSyncText">Verbinding maken met Live Wolk...</strong>
+    </span>
+    <span id="cloudSyncSub" style="font-size: 10.5px; font-weight: 700; color: #059669;">Realtime</span>
   </div>
 
   <!-- My Quick Actions Hero Banner -->
@@ -415,6 +420,6 @@
     <span id="toastText">Streepje getrokken!</span>
   </div>
 
-  <script src="./app.js"></script>
+  <script src="./app.js?v=3.2"></script>
 </body>
 </html>
