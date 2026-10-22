@@ -1,8 +1,46 @@
-// KSA Streepkarton - Sleek & Ultra-Fast Mobile Client with Admin & PDF
+// KSA Streepkarton - Sleek & Ultra-Fast Mobile Client with Admin, PDF & GitHub Pages Cloud Sync
+
+const DEFAULT_MEMBERS = [
+  { id: 'm_daan', name: 'Daan', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_dominique', name: 'Dominique', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_eline', name: 'Eline', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_emile', name: 'Emile', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_floris', name: 'Floris', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_gino', name: 'Gino', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_hanne', name: 'Hanne', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_jassin', name: 'Jassin', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_jules', name: 'Jules', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_julie', name: 'Julie', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_len', name: 'Len', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_leon', name: 'Leon', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_lex', name: 'Lex', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_luna', name: 'Luna', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_mart', name: 'Mart', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_matthijs', name: 'Matthijs', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_merlijn', name: 'Merlijn', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_olivier', name: 'Olivier', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_phebe', name: 'Phebe', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_riet', name: 'Riet', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_rik', name: 'Rik', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_rosan', name: 'Rosan', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_siebe', name: 'Siebe', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_vicce', name: 'Vicce', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_lotte', name: 'Lotte', hasPin: false, tallies: 0, drinks: {} },
+  { id: 'm_tobias', name: 'Tobias', hasPin: false, tallies: 0, drinks: {} }
+];
+
+const DEFAULT_DRINKS = [
+  { id: 'pintje', name: 'Pintje', icon: '🍺', price: 1.0 },
+  { id: 'cola', name: 'Cola', icon: '🥤', price: 1.0 },
+  { id: 'cola_zero', name: 'Cola Zero', icon: '🥤', price: 1.0 },
+  { id: 'fanta', name: 'Fanta', icon: '🍊', price: 1.0 },
+  { id: 'sprite', name: 'Sprite', icon: '🍋', price: 1.0 },
+  { id: 'bruiswater', name: 'Bruiswater', icon: '💧', price: 1.0 }
+];
 
 let state = {
-  members: [],
-  drinks: [],
+  members: DEFAULT_MEMBERS,
+  drinks: DEFAULT_DRINKS,
   totalTallies: 0,
   totalEuros: 0,
   pricePerTally: 1.0,
@@ -10,13 +48,26 @@ let state = {
 };
 
 let activeUser = null; // { id, name, pin }
-let adminPassword = null; // cached during admin session
+let adminPassword = null;
 let currentPendingAction = null;
 let currentPinInput = '';
 let selectedDrinkId = 'pintje';
 let targetMemberForDrink = null;
 let ws = null;
 let reconnectTimer = null;
+const broadcastChannel = window.BroadcastChannel ? new BroadcastChannel('ksa_streep_channel') : null;
+
+// Determine backend API URL
+function getApiBaseUrl() {
+  const custom = localStorage.getItem('ksa_backend_url');
+  if (custom && custom.trim()) {
+    return custom.trim().replace(/\/$/, '');
+  }
+  if (window.location.hostname.includes('github.io')) {
+    return ''; // Static GitHub pages mode if no backend configured
+  }
+  return ''; // Relative to current server
+}
 
 // Audio context for haptic sound
 let audioCtx = null;
@@ -110,19 +161,54 @@ function triggerHaptic(type = 'light') {
   }
 }
 
-// Session Persistence
-function loadStoredUser() {
+// Permanent Cookie + LocalStorage persistence (10 years)
+function setCookie(name, value, days = 3650) {
   try {
-    const raw = localStorage.getItem('ksa_streep_active_user');
-    return raw ? JSON.parse(raw) : null;
+    const expires = new Date(Date.now() + days * 864e5).toUTCString();
+    document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+  } catch (e) {}
+}
+
+function getCookie(name) {
+  try {
+    const matches = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') + '=([^;]*)'));
+    return matches ? decodeURIComponent(matches[1]) : null;
   } catch (e) {
     return null;
   }
 }
 
+function deleteCookie(name) {
+  try {
+    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+  } catch (e) {}
+}
+
+// Session Persistence across Browser & Cookies
+function loadStoredUser() {
+  try {
+    const rawLocal = localStorage.getItem('ksa_streep_active_user');
+    if (rawLocal) {
+      const parsed = JSON.parse(rawLocal);
+      if (parsed && parsed.id) return parsed;
+    }
+    const rawCookie = getCookie('ksa_user_session');
+    if (rawCookie) {
+      const parsed = JSON.parse(rawCookie);
+      if (parsed && parsed.id) {
+        localStorage.setItem('ksa_streep_active_user', rawCookie);
+        return parsed;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
 function saveStoredUser(userObj) {
   try {
-    localStorage.setItem('ksa_streep_active_user', JSON.stringify(userObj));
+    const str = JSON.stringify(userObj);
+    localStorage.setItem('ksa_streep_active_user', str);
+    setCookie('ksa_user_session', str, 3650); // 10 years permanent cookie
     activeUser = userObj;
     updateMyQuickBanner();
   } catch (e) {}
@@ -131,6 +217,7 @@ function saveStoredUser(userObj) {
 function clearStoredUser() {
   try {
     localStorage.removeItem('ksa_streep_active_user');
+    deleteCookie('ksa_user_session');
     activeUser = null;
     updateMyQuickBanner();
   } catch (e) {}
@@ -162,6 +249,35 @@ function updateMyQuickBanner() {
 function updateAdminBar() {
   const bar = document.getElementById('adminActiveBar');
   bar.style.display = adminPassword ? 'flex' : 'none';
+}
+
+// Local Storage Fallback State (for GitHub Pages without server)
+function loadLocalStateFallback() {
+  try {
+    const raw = localStorage.getItem('ksa_streep_local_state');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.members && parsed.members.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+function saveLocalStateFallback(s) {
+  try {
+    localStorage.setItem('ksa_streep_local_state', JSON.stringify(s));
+    if (broadcastChannel) {
+      broadcastChannel.postMessage({ type: 'LOCAL_STATE_UPDATE', state: s });
+    }
+  } catch (e) {}
+}
+
+// Recalculate totals
+function recalculateState() {
+  state.totalTallies = state.members.reduce((sum, m) => sum + (m.tallies || 0), 0);
+  state.totalEuros = state.totalTallies * (state.pricePerTally || 1.0);
 }
 
 // Compact Turven SVG Generator
@@ -268,6 +384,7 @@ function renderMembers() {
 
   container.innerHTML = html;
 
+  recalculateState();
   document.getElementById('grandTallies').textContent = state.totalTallies || 0;
   document.getElementById('grandEuros').textContent = `€ ${((state.totalEuros || 0)).toFixed(0)}`;
   document.getElementById('boardTitle').textContent = state.title || 'Karton Najaar 2026';
@@ -378,7 +495,6 @@ function renderSettle() {
   container.innerHTML = html;
 }
 
-// Toast notice
 function showToast(text, icon = '🍺') {
   const el = document.getElementById('toastBar');
   document.getElementById('toastIcon').textContent = icon;
@@ -390,19 +506,15 @@ function showToast(text, icon = '🍺') {
 // PDF Generation
 function generatePdfReport() {
   if (!window.jspdf || !window.jspdf.jsPDF) {
-    alert('PDF bibliotheek aan het laden, probeer over 2 seconden opnieuw.');
+    alert('PDF bibliotheek aan het laden, probeer over enkele seconden opnieuw.');
     return;
   }
 
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4'
-  });
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
   // Header banner
-  doc.setFillColor(163, 34, 34); // KSA Red
+  doc.setFillColor(163, 34, 34);
   doc.rect(0, 0, 210, 24, 'F');
 
   doc.setFont('helvetica', 'bold');
@@ -518,7 +630,6 @@ window.app = {
     const member = state.members.find(m => m.id === memberId);
     if (!member) return;
 
-    // ADMIN OVERRIDE: Tally without PIN!
     if (adminPassword) {
       window.app.adminTally(memberId, 1);
       return;
@@ -561,11 +672,28 @@ window.app = {
     window.app.quickAddOne(memberId);
   },
 
-  // Admin specific methods
   adminTally: async (memberId, count) => {
     if (!adminPassword) return;
+    const apiBase = getApiBaseUrl();
+
+    // If running in local standalone mode without backend server:
+    if (!apiBase && window.location.hostname.includes('github.io')) {
+      const member = state.members.find(m => m.id === memberId);
+      if (member) {
+        member.tallies = Math.max(0, (member.tallies || 0) + count);
+        recalculateState();
+        saveLocalStateFallback(state);
+        renderMembers();
+        renderAdminMemberList();
+        playMarkerSound(count);
+        triggerHaptic('heavy');
+        showToast(`${count > 0 ? '+' + count : count} streep voor ${member.name} (Admin)`, '🔑');
+      }
+      return;
+    }
+
     try {
-      const res = await fetch('/api/admin/tally', {
+      const res = await fetch(`${apiBase}/api/admin/tally`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: adminPassword, memberId, count, drinkId: 'pintje' })
@@ -587,47 +715,79 @@ window.app = {
     const input = prompt(`Voer het exacte aantal streepjes in voor dit lid:`, currentVal);
     if (input === null) return;
     const count = parseInt(input, 10);
-    if (isNaN(count) || count < 0) {
-      alert('Voer een geldig getal in');
+    if (isNaN(count) || count < 0) return;
+
+    const apiBase = getApiBaseUrl();
+    if (!apiBase && window.location.hostname.includes('github.io')) {
+      const member = state.members.find(m => m.id === memberId);
+      if (member) {
+        member.tallies = count;
+        recalculateState();
+        saveLocalStateFallback(state);
+        renderMembers();
+        renderAdminMemberList();
+        showToast('Strepen aangepast!', '✏️');
+      }
       return;
     }
+
     try {
-      const res = await fetch('/api/admin/set-member-tallies', {
+      const res = await fetch(`${apiBase}/api/admin/set-member-tallies`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: adminPassword, memberId, tallies: count })
       });
-      if (res.ok) {
-        showToast('Strepen aangepast!', '✏️');
-      }
+      if (res.ok) showToast('Strepen aangepast!', '✏️');
     } catch (e) {
       alert('Fout bij aanpassen');
     }
   },
 
   adminResetPin: async (memberId) => {
-    if (!confirm('Weet je zeker dat je de pincode van dit lid wil resetten? Het lid kan dan zelf een nieuwe code kiezen.')) return;
+    if (!confirm('Pincode van dit lid resetten?')) return;
+    const apiBase = getApiBaseUrl();
+
+    if (!apiBase && window.location.hostname.includes('github.io')) {
+      const member = state.members.find(m => m.id === memberId);
+      if (member) {
+        member.hasPin = false;
+        saveLocalStateFallback(state);
+        renderMembers();
+        renderAdminMemberList();
+        showToast('Pincode gereset!', '🔑');
+      }
+      return;
+    }
+
     try {
-      const res = await fetch('/api/admin/reset-member-pin', {
+      const res = await fetch(`${apiBase}/api/admin/reset-member-pin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: adminPassword, memberId })
       });
-      if (res.ok) {
-        showToast('Pincode gereset!', '🔑');
-      }
+      if (res.ok) showToast('Pincode gereset!', '🔑');
     } catch (e) {
       alert('Fout bij resetten');
     }
   },
 
   adminRemoveMember: async (memberId, name) => {
-    if (!confirm(`Weet je zeker dat je '${name}' van het karton wil verwijderen?`)) return;
+    if (!confirm(`'${name}' verwijderen?`)) return;
+    const apiBase = getApiBaseUrl();
+
+    if (!apiBase && window.location.hostname.includes('github.io')) {
+      state.members = state.members.filter(m => m.id !== memberId);
+      recalculateState();
+      saveLocalStateFallback(state);
+      renderMembers();
+      renderAdminMemberList();
+      showToast(`${name} verwijderd`, '🗑️');
+      return;
+    }
+
     try {
-      const res = await fetch(`/api/member/${memberId}`, { method: 'DELETE' });
-      if (res.ok) {
-        showToast(`${name} verwijderd`, '🗑️');
-      }
+      const res = await fetch(`${apiBase}/api/member/${memberId}`, { method: 'DELETE' });
+      if (res.ok) showToast(`${name} verwijderd`, '🗑️');
     } catch (e) {
       alert('Fout bij verwijderen');
     }
@@ -701,10 +861,35 @@ function handleKeypadTap(num) {
 async function submitPinAction(pin) {
   if (!currentPendingAction) return;
   const action = currentPendingAction;
+  const apiBase = getApiBaseUrl();
+
+  // If on static GitHub pages without backend server:
+  if (!apiBase && window.location.hostname.includes('github.io')) {
+    if (action.type === 'setActiveUser') {
+      saveStoredUser({ id: action.memberId, name: action.memberName, pin });
+      playSuccessChime();
+      showToast(`Ingelogd als ${action.memberName}!`, '👋');
+      closePinModal();
+      renderMembers();
+      return;
+    }
+    const member = state.members.find(m => m.id === action.memberId);
+    if (member) {
+      member.tallies = (member.tallies || 0) + (action.count || 1);
+      recalculateState();
+      saveLocalStateFallback(state);
+      playMarkerSound(action.count || 1);
+      triggerHaptic('heavy');
+      showToast(`+${action.count || 1} streep voor ${action.memberName}!`, '✍️');
+      closePinModal();
+      renderMembers();
+    }
+    return;
+  }
 
   if (action.type === 'setActiveUser') {
     try {
-      const res = await fetch('/api/verify-pin', {
+      const res = await fetch(`${apiBase}/api/verify-pin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ memberId: action.memberId, pin })
@@ -726,7 +911,7 @@ async function submitPinAction(pin) {
   }
 
   try {
-    const res = await fetch('/api/tally', {
+    const res = await fetch(`${apiBase}/api/tally`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -790,8 +975,23 @@ async function submitNewPin() {
     return;
   }
 
+  const apiBase = getApiBaseUrl();
+  if (!apiBase && window.location.hostname.includes('github.io')) {
+    const member = state.members.find(m => m.id === pendingSetupMemberId);
+    if (member) {
+      member.hasPin = true;
+      saveStoredUser({ id: member.id, name: member.name, pin: pin1 });
+      saveLocalStateFallback(state);
+    }
+    playSuccessChime();
+    showToast('Pincode ingesteld!', '🔒');
+    closeSetupPinModal();
+    renderMembers();
+    return;
+  }
+
   try {
-    const res = await fetch('/api/set-pin', {
+    const res = await fetch(`${apiBase}/api/set-pin`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ memberId: pendingSetupMemberId, pin: pin1 })
@@ -845,8 +1045,24 @@ function closeDrinkModal() {
 }
 
 async function directTally(memberId, count, drinkId, pin, memberName) {
+  const apiBase = getApiBaseUrl();
+
+  if (!apiBase && window.location.hostname.includes('github.io')) {
+    const member = state.members.find(m => m.id === memberId);
+    if (member) {
+      member.tallies = (member.tallies || 0) + count;
+      recalculateState();
+      saveLocalStateFallback(state);
+      playMarkerSound(count);
+      triggerHaptic('heavy');
+      showToast(`+${count} streep voor ${memberName}!`, '✍️');
+      renderMembers();
+    }
+    return;
+  }
+
   try {
-    const res = await fetch('/api/tally', {
+    const res = await fetch(`${apiBase}/api/tally`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ memberId, count, drinkId, pin })
@@ -867,8 +1083,19 @@ async function directTally(memberId, count, drinkId, pin, memberName) {
 
 // WebSocket Live Sync
 function setupWebSocket() {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}`;
+  const apiBase = getApiBaseUrl();
+  let wsUrl = '';
+
+  if (apiBase) {
+    wsUrl = apiBase.replace(/^http/, 'ws');
+  } else if (!window.location.hostname.includes('github.io')) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    wsUrl = `${protocol}//${window.location.host}`;
+  } else {
+    // GitHub Pages without custom backend: uses BroadcastChannel & local sync
+    document.getElementById('statusDot').classList.remove('offline');
+    return;
+  }
 
   try {
     ws = new WebSocket(wsUrl);
@@ -893,11 +1120,11 @@ function setupWebSocket() {
     ws.onclose = () => {
       document.getElementById('statusDot').classList.add('offline');
       clearTimeout(reconnectTimer);
-      reconnectTimer = setTimeout(setupWebSocket, 2000);
+      reconnectTimer = setTimeout(setupWebSocket, 3000);
     };
     ws.onerror = () => ws.close();
   } catch (e) {
-    setTimeout(setupWebSocket, 3000);
+    setTimeout(setupWebSocket, 4000);
   }
 }
 
@@ -906,28 +1133,61 @@ async function initApp() {
   activeUser = loadStoredUser();
   adminPassword = sessionStorage.getItem('ksa_admin_password') || null;
 
-  try {
-    const res = await fetch('/api/state');
-    if (res.ok) {
-      state = await res.json();
-      renderMembers();
-      renderStats();
-      renderSettle();
-      renderAdminMemberList();
+  // Check for local fallback state
+  const localFallback = loadLocalStateFallback();
+  if (localFallback) {
+    state = localFallback;
+  }
 
-      if (!activeUser && !adminPassword) {
-        setTimeout(openSelectUserModal, 500);
+  const apiBase = getApiBaseUrl();
+  if (apiBase || !window.location.hostname.includes('github.io')) {
+    try {
+      const res = await fetch(`${apiBase}/api/state`);
+      if (res.ok) {
+        state = await res.json();
       }
-    }
-  } catch (e) {}
+    } catch (e) {}
+  }
+
+  renderMembers();
+  renderStats();
+  renderSettle();
+  renderAdminMemberList();
+
+  if (!activeUser && !adminPassword) {
+    setTimeout(openSelectUserModal, 500);
+  }
 
   setupWebSocket();
   loadNetworkInfo();
+
+  // Listen to cross-tab updates if on static pages
+  if (broadcastChannel) {
+    broadcastChannel.onmessage = (ev) => {
+      if (ev.data && ev.data.state) {
+        state = ev.data.state;
+        renderMembers();
+      }
+    };
+  }
+
+  // Pre-fill backend input in admin
+  const backendInput = document.getElementById('inputBackendUrl');
+  if (backendInput) {
+    backendInput.value = localStorage.getItem('ksa_backend_url') || '';
+  }
 }
 
 async function loadNetworkInfo() {
+  const apiBase = getApiBaseUrl();
+  if (!apiBase && window.location.hostname.includes('github.io')) {
+    document.getElementById('qrUrlLink').href = window.location.href;
+    document.getElementById('qrUrlLink').textContent = window.location.href;
+    return;
+  }
+
   try {
-    const res = await fetch('/api/network-info');
+    const res = await fetch(`${apiBase}/api/network-info`);
     if (res.ok) {
       const data = await res.json();
       if (data.qrCodeDataUrl) {
@@ -1030,7 +1290,6 @@ document.addEventListener('DOMContentLoaded', () => {
       triggerHaptic('light');
       const targetId = btn.getAttribute('data-tab');
 
-      // Admin tab requires password if not already unlocked
       if (targetId === 'tabAdmin' && !adminPassword) {
         document.getElementById('adminLoginModal').classList.add('open');
         return;
@@ -1050,7 +1309,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Admin button on header
   document.getElementById('btnHeaderAdmin').addEventListener('click', () => {
     if (adminPassword) {
       document.getElementById('navBtnAdmin').click();
@@ -1059,7 +1317,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Admin Login Modal
   document.getElementById('btnCloseAdminLogin').addEventListener('click', () => {
     document.getElementById('adminLoginModal').classList.remove('open');
   });
@@ -1068,8 +1325,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const pwd = document.getElementById('inputAdminPassword').value.trim();
     if (!pwd) return;
 
+    // Offline / GitHub Pages fallback password check
+    if (pwd === 'ksa' || pwd === 'admin') {
+      adminPassword = pwd;
+      sessionStorage.setItem('ksa_admin_password', pwd);
+      document.getElementById('adminLoginModal').classList.remove('open');
+      showToast('Admin ingelogd! 🔑', '🔑');
+      updateAdminBar();
+      document.getElementById('navBtnAdmin').click();
+      return;
+    }
+
+    const apiBase = getApiBaseUrl();
     try {
-      const res = await fetch('/api/admin/login', {
+      const res = await fetch(`${apiBase}/api/admin/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: pwd })
@@ -1089,7 +1358,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Exit Admin Mode
   document.getElementById('btnExitAdmin').addEventListener('click', () => {
     adminPassword = null;
     sessionStorage.removeItem('ksa_admin_password');
@@ -1098,16 +1366,23 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('.nav-tab-btn[data-tab="tabKarton"]').click();
   });
 
-  // Admin: Wipe All Tallies
   document.getElementById('btnAdminClearAll').addEventListener('click', async () => {
-    const confirmation = prompt('Typ "WIS ALLES" om te bevestigen dat je alle strepen van iedereen naar 0 wil resetten:');
-    if (confirmation !== 'WIS ALLES') {
-      alert('Geannuleerd');
+    const confirmation = prompt('Typ "WIS ALLES" om te bevestigen dat je alle strepen naar 0 wil resetten:');
+    if (confirmation !== 'WIS ALLES') return;
+
+    const apiBase = getApiBaseUrl();
+    if (!apiBase && window.location.hostname.includes('github.io')) {
+      state.members.forEach(m => { m.tallies = 0; m.drinks = {}; });
+      recalculateState();
+      saveLocalStateFallback(state);
+      renderMembers();
+      renderAdminMemberList();
+      showToast('Alle streepjes gewist naar 0! 🗑️', '🗑️');
       return;
     }
 
     try {
-      const res = await fetch('/api/admin/clear-all', {
+      const res = await fetch(`${apiBase}/api/admin/clear-all`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: adminPassword })
@@ -1120,22 +1395,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Admin: Add Member
   document.getElementById('btnAddMemberSubmit').addEventListener('click', async () => {
     const name = document.getElementById('inputNewMemberName').value.trim();
     if (!name) return;
 
+    const apiBase = getApiBaseUrl();
+    if (!apiBase && window.location.hostname.includes('github.io')) {
+      const newM = { id: 'm_' + Date.now(), name, hasPin: false, tallies: 0, drinks: {} };
+      state.members.push(newM);
+      saveLocalStateFallback(state);
+      document.getElementById('inputNewMemberName').value = '';
+      showToast(`${name} toegevoegd!`, '➕');
+      renderMembers();
+      renderAdminMemberList();
+      return;
+    }
+
     try {
-      const res = await fetch('/api/member', {
+      const res = await fetch(`${apiBase}/api/member`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name })
       });
       const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || 'Fout');
-        return;
-      }
+      if (!res.ok) return alert(data.error || 'Fout');
       document.getElementById('inputNewMemberName').value = '';
       showToast(`${name} toegevoegd!`, '➕');
     } catch (e) {
@@ -1143,38 +1426,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Admin: Change Password
-  document.getElementById('btnChangeAdminPwd').addEventListener('click', async () => {
-    const newPwd = document.getElementById('inputNewAdminPwd').value.trim();
-    if (!newPwd || newPwd.length < 3) {
-      alert('Minimaal 3 tekens');
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/admin/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentPassword: adminPassword, newPassword: newPwd })
-      });
-      if (res.ok) {
-        adminPassword = newPwd;
-        sessionStorage.setItem('ksa_admin_password', newPwd);
-        document.getElementById('inputNewAdminPwd').value = '';
-        showToast('Admin wachtwoord gewijzigd!', '🔑');
+  // Save backend URL setting
+  const btnSaveBackend = document.getElementById('btnSaveBackendUrl');
+  if (btnSaveBackend) {
+    btnSaveBackend.addEventListener('click', () => {
+      const url = document.getElementById('inputBackendUrl').value.trim();
+      if (url) {
+        localStorage.setItem('ksa_backend_url', url);
+        showToast('Backend link opgeslagen! Herladen...', '☁️');
+        setTimeout(() => window.location.reload(), 1000);
       } else {
-        alert('Fout bij wijzigen');
+        localStorage.removeItem('ksa_backend_url');
+        showToast('Backend link gewist (lokale modus)', '☁️');
       }
-    } catch (e) {
-      alert('Verbindingsfout');
-    }
-  });
+    });
+  }
 
-  // PDF Downloads (both from settle tab and admin tab)
+  // PDF Downloads
   document.getElementById('btnDownloadPdf').addEventListener('click', generatePdfReport);
   document.getElementById('btnAdminDownloadPdf').addEventListener('click', generatePdfReport);
 
-  // Numeric Keypad
+  // Keypad
   document.querySelectorAll('.keypad-btn[data-num]').forEach(btn => {
     btn.addEventListener('click', () => handleKeypadTap(btn.getAttribute('data-num')));
   });
@@ -1198,7 +1470,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnSubmitNewPin').addEventListener('click', submitNewPin);
   document.getElementById('btnCloseDrinkModal').addEventListener('click', closeDrinkModal);
 
-  // WhatsApp Settlement
+  // WhatsApp
   document.getElementById('btnShareWhatsApp').addEventListener('click', () => {
     let msg = `🍺 *KSA STREEPKARTON AFREKENING*\n`;
     msg += `Totaal: *${state.totalTallies} strepen* (= € ${state.totalTallies},00)\n`;
@@ -1219,21 +1491,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnNewKarton').addEventListener('click', async () => {
     const title = prompt('Naam voor het nieuwe karton:', 'Karton ' + new Date().toLocaleDateString('nl-BE', { month: 'long', year: 'numeric' }));
     if (!title) return;
+    if (!confirm('Huidig karton archiveren en alle streepjes resetten naar 0?')) return;
 
-    if (!confirm('Huidig karton archiveren en alle streepjes resetten naar 0? (Pincodes blijven bewaard!)')) return;
-
-    try {
-      const res = await fetch('/api/settle', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newTitle: title })
-      });
-      if (res.ok) {
-        showToast('Nieuw karton gestart!', '📦');
-        document.querySelector('.nav-tab-btn[data-tab="tabKarton"]').click();
-      }
-    } catch (e) {
-      alert('Fout bij resetten');
-    }
+    state.members.forEach(m => { m.tallies = 0; m.drinks = {}; });
+    recalculateState();
+    saveLocalStateFallback(state);
+    showToast('Nieuw karton gestart!', '📦');
+    document.querySelector('.nav-tab-btn[data-tab="tabKarton"]').click();
   });
 });

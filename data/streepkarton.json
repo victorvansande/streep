@@ -231,8 +231,10 @@
       "name": "Vicce",
       "pinHash": "44db4e7dd7d675378fce1f9272c0fe44d428b75eb16101d53b88155a39d4aaf8",
       "hasPin": true,
-      "tallies": 0,
-      "drinks": {}
+      "tallies": 11,
+      "drinks": {
+        "pintje": 11
+      }
     },
     {
       "id": "m_lotte",
@@ -251,5 +253,116 @@
       "drinks": {}
     }
   ],
-  "history": []
+  "history": [
+    {
+      "id": "log_1792682989069_9i91j",
+      "timestamp": "2026-10-22T15:29:49.069Z",
+      "memberId": "m_vicce",
+      "memberName": "Vicce",
+      "count": 1,
+      "drinkId": "pintje",
+      "drinkName": "Pintje",
+      "drinkIcon": "🍺"
+    },
+    {
+      "id": "log_1792682988933_g3q89",
+      "timestamp": "2026-10-22T15:29:48.933Z",
+      "memberId": "m_vicce",
+      "memberName": "Vicce",
+      "count": 1,
+      "drinkId": "pintje",
+      "drinkName": "Pintje",
+      "drinkIcon": "🍺"
+    },
+    {
+      "id": "log_1792682988790_hgu16",
+      "timestamp": "2026-10-22T15:29:48.790Z",
+      "memberId": "m_vicce",
+      "memberName": "Vicce",
+      "count": 1,
+      "drinkId": "pintje",
+      "drinkName": "Pintje",
+      "drinkIcon": "🍺"
+    },
+    {
+      "id": "log_1792682988638_9rj6e",
+      "timestamp": "2026-10-22T15:29:48.638Z",
+      "memberId": "m_vicce",
+      "memberName": "Vicce",
+      "count": 1,
+      "drinkId": "pintje",
+      "drinkName": "Pintje",
+      "drinkIcon": "🍺"
+    },
+    {
+      "id": "log_1792682988486_8jjl5",
+      "timestamp": "2026-10-22T15:29:48.486Z",
+      "memberId": "m_vicce",
+      "memberName": "Vicce",
+      "count": 1,
+      "drinkId": "pintje",
+      "drinkName": "Pintje",
+      "drinkIcon": "🍺"
+    },
+    {
+      "id": "log_1792682988325_p7ai9",
+      "timestamp": "2026-10-22T15:29:48.325Z",
+      "memberId": "m_vicce",
+      "memberName": "Vicce",
+      "count": 1,
+      "drinkId": "pintje",
+      "drinkName": "Pintje",
+      "drinkIcon": "🍺"
+    },
+    {
+      "id": "log_1792682988213_ipb8q",
+      "timestamp": "2026-10-22T15:29:48.213Z",
+      "memberId": "m_vicce",
+      "memberName": "Vicce",
+      "count": 1,
+      "drinkId": "pintje",
+      "drinkName": "Pintje",
+      "drinkIcon": "🍺"
+    },
+    {
+      "id": "log_1792682988037_hxx4l",
+      "timestamp": "2026-10-22T15:29:48.037Z",
+      "memberId": "m_vicce",
+      "memberName": "Vicce",
+      "count": 1,
+      "drinkId": "pintje",
+      "drinkName": "Pintje",
+      "drinkIcon": "🍺"
+    },
+    {
+      "id": "log_1792682987870_e3h2l",
+      "timestamp": "2026-10-22T15:29:47.870Z",
+      "memberId": "m_vicce",
+      "memberName": "Vicce",
+      "count": 1,
+      "drinkId": "pintje",
+      "drinkName": "Pintje",
+      "drinkIcon": "🍺"
+    },
+    {
+      "id": "log_1792682987631_7zql7",
+      "timestamp": "2026-10-22T15:29:47.631Z",
+      "memberId": "m_vicce",
+      "memberName": "Vicce",
+      "count": 1,
+      "drinkId": "pintje",
+      "drinkName": "Pintje",
+      "drinkIcon": "🍺"
+    },
+    {
+      "id": "log_1792682987163_bm3zo",
+      "timestamp": "2026-10-22T15:29:47.165Z",
+      "memberId": "m_vicce",
+      "memberName": "Vicce",
+      "count": 1,
+      "drinkId": "pintje",
+      "drinkName": "Pintje",
+      "drinkIcon": "🍺"
+    }
+  ]
 }

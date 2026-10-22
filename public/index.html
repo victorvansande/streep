@@ -7,11 +7,14 @@
   <meta name="theme-color" content="#eedec7">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="manifest" href="/manifest.json">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./style.css">
   <!-- jsPDF and autoTable for instant PDF downloads -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <!-- Firebase SDK for optional 0-server live sync on GitHub Pages -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -36,6 +39,12 @@
   <div class="admin-active-bar" id="adminActiveBar" style="display: none;">
     <span>🔑 <strong>Admin Modus Actief</strong> (geen pincodes vereist)</span>
     <button class="btn-exit-admin" id="btnExitAdmin">Afsluiten</button>
+  </div>
+
+  <!-- Cloud Sync Status Pill (Visible on GitHub Pages if cloud sync configured) -->
+  <div id="cloudSyncBanner" style="display: none; background: #e0f2fe; border: 1px solid #7dd3fc; border-radius: 6px; margin: 6px 12px 0 12px; padding: 4px 10px; font-size: 11px; color: #0369a1; justify-content: space-between; align-items: center;">
+    <span>☁️ <strong id="cloudSyncText">Live Cloud Sync Actief</strong></span>
+    <button id="btnConfigureCloud" style="background: none; border: none; color: #0284c7; text-decoration: underline; font-size: 11px; cursor: pointer;">Instellingen</button>
   </div>
 
   <!-- My Quick Actions Hero Banner -->
@@ -156,6 +165,14 @@
           <input type="text" id="inputNewMemberName" class="search-input-slim" placeholder="Naam leiding..." style="flex: 1;">
           <button class="btn-primary-action" id="btnAddMemberSubmit" style="width: auto; padding: 8px 14px; font-size: 13px;">Toevoegen</button>
         </div>
+      </div>
+
+      <!-- Cloud Sync & Server Settings (For GitHub Pages deployment) -->
+      <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 10px; margin-bottom: 14px;">
+        <strong style="font-size: 13px; color: #166534; display: block; margin-bottom: 4px;">☁️ Cloud Synchronisatie (GitHub Pages)</strong>
+        <p style="font-size: 11px; color: #15803d; margin-bottom: 6px;">Om op GitHub Pages alle telefoons live te laten synchroniseren:</p>
+        <input type="text" id="inputBackendUrl" class="search-input-slim" placeholder="Backend URL (bv. https://ksa-streep.onrender.com of Firebase)" style="margin-bottom: 6px; font-size: 12px;">
+        <button class="btn-primary-action" id="btnSaveBackendUrl" style="font-size: 12px; padding: 6px; background: #16a34a; box-shadow: 0 2px 0 #15803d;">Verbinding Opslaan</button>
       </div>
 
       <!-- Change Admin Password -->
@@ -369,6 +386,6 @@
     <span id="toastText">Streepje getrokken!</span>
   </div>
 
-  <script src="/app.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
