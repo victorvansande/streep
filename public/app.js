@@ -1437,64 +1437,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Drink modal actions
-  document.getElementById('btnConfirmDrinkOne').addEventListener('click', () => {
-    const memId = targetMemberForDrink || (activeUser ? activeUser.id : null);
-    if (!memId) {
+  // Drink modal confirm selection
+  const btnConfirmDrink = document.getElementById('btnConfirmDrinkSelection');
+  if (btnConfirmDrink) {
+    btnConfirmDrink.addEventListener('click', () => {
+      const current = getSelectedDrink();
       closeDrinkModal();
-      return;
-    }
-    const current = getSelectedDrink();
-    closeDrinkModal();
-
-    if (adminPassword) {
-      window.app.adminTally(memId, 1);
-      return;
-    }
-
-    if (activeUser && activeUser.id === memId) {
-      directTally(memId, 1, current.id, activeUser.name, current.name);
-    } else {
-      const mem = state.members.find(m => m.id === memId);
-      openPinModal({
-        type: 'tally',
-        memberId: memId,
-        memberName: mem ? mem.name : '',
-        count: 1,
-        drinkId: current.id,
-        drinkName: current.name
-      });
-    }
-  });
-
-  document.getElementById('btnConfirmDrinkFive').addEventListener('click', () => {
-    const memId = targetMemberForDrink || (activeUser ? activeUser.id : null);
-    if (!memId) {
-      closeDrinkModal();
-      return;
-    }
-    const current = getSelectedDrink();
-    closeDrinkModal();
-
-    if (adminPassword) {
-      window.app.adminTally(memId, 5);
-      return;
-    }
-
-    if (activeUser && activeUser.id === memId) {
-      directTally(memId, 5, current.id, activeUser.name, current.name);
-    } else {
-      const mem = state.members.find(m => m.id === memId);
-      openPinModal({
-        type: 'tally',
-        memberId: memId,
-        memberName: mem ? mem.name : '',
-        count: 5,
-        drinkId: current.id,
-        drinkName: current.name
-      });
-    }
-  });
+      triggerHaptic('light');
+      playSuccessChime();
+      showToast(`${current.name} ${current.icon} geselecteerd!`, current.icon);
+    });
+  }
 
   // Tab navigation
   document.querySelectorAll('.nav-tab-btn').forEach(btn => {
