@@ -11,6 +11,12 @@
       "price": 1
     },
     {
+      "id": "cara_rouge",
+      "name": "Cara Rouge",
+      "icon": "🍒",
+      "price": 1
+    },
+    {
       "id": "cola",
       "name": "Cola",
       "icon": "🥤",

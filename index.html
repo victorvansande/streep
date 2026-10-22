@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>KSA Streepkarton</title>
-  <meta name="theme-color" content="#eedec7">
+  <meta name="theme-color" content="#f0e2cf">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="manifest" href="./manifest.json">
@@ -12,9 +12,6 @@
   <!-- jsPDF and autoTable for instant PDF downloads -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-  <!-- Firebase SDK for optional 0-server live sync on GitHub Pages -->
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -41,10 +38,10 @@
     <button class="btn-exit-admin" id="btnExitAdmin">Afsluiten</button>
   </div>
 
-  <!-- Cloud Sync Status Pill (Visible on GitHub Pages if cloud sync configured) -->
-  <div id="cloudSyncBanner" style="display: none; background: #e0f2fe; border: 1px solid #7dd3fc; border-radius: 6px; margin: 6px 12px 0 12px; padding: 4px 10px; font-size: 11px; color: #0369a1; justify-content: space-between; align-items: center;">
-    <span>☁️ <strong id="cloudSyncText">Live Cloud Sync Actief</strong></span>
-    <button id="btnConfigureCloud" style="background: none; border: none; color: #0284c7; text-decoration: underline; font-size: 11px; cursor: pointer;">Instellingen</button>
+  <!-- Cloud Sync Status Pill -->
+  <div id="cloudSyncBanner" style="display: none; background: #e0f2fe; border: 1px solid #7dd3fc; border-radius: 999px; margin: 6px auto; max-width: 580px; padding: 4px 14px; font-size: 11px; color: #0369a1; justify-content: space-between; align-items: center;">
+    <span>☁️ <strong id="cloudSyncText">Live Gesynchroniseerd</strong></span>
+    <span style="font-size: 10px; color: #0284c7;">ntfy cloud</span>
   </div>
 
   <!-- My Quick Actions Hero Banner -->
@@ -57,28 +54,49 @@
       <span class="my-tally-count" id="myUserCount">0 strepen</span>
     </div>
 
+    <!-- Quick Action 1-Tap Buttons -->
     <div class="my-action-row" id="myActionRow">
-      <button class="btn-quick-beer" id="btnMyQuickBeer">
-        <span>🍺 +1 Pint</span>
+      <button class="btn-pill-primary" id="btnMyQuickBeer">
+        <span id="quickAddLabel">🍺 +1 Pintje</span>
       </button>
-      <button class="btn-quick-five" id="btnMyQuickFive">
+      <button class="btn-pill-secondary" id="btnMyQuickFive">
         <span>⚡ +5</span>
       </button>
-      <button class="btn-quick-choice" id="btnMyQuickChoice">
-        <span>🥤 Fris</span>
-      </button>
+    </div>
+
+    <!-- Explicit Drink Selector Pill -->
+    <button class="btn-pill-drink-selector" id="btnMyQuickChoice" title="Kies welk drankje geturfd wordt">
+      <span class="pill-selector-left">
+        <span>🥤</span> Kies je drank • Geselecteerd:
+      </span>
+      <span class="pill-selector-badge" id="currentDrinkBadge">Pintje 🍺 (wijzig)</span>
+    </button>
+  </section>
+
+  <!-- Mini Leaderboard (Top 3 Grootste Drinkers) -->
+  <section class="mini-leaderboard" id="miniLeaderboard">
+    <div class="mini-lead-header">
+      <span>🏆 Grootste Drinkers</span>
+      <span style="font-size: 10px; font-weight: 700; text-transform: none; color: #9c8365;">Top 3</span>
+    </div>
+    <div class="mini-lead-podium" id="podiumContent">
+      <!-- Injected: 🥇 1ste, 🥈 2de, 🥉 3de -->
     </div>
   </section>
 
-  <!-- Slim Search -->
-  <div class="search-container">
+  <!-- Slim Search & Add Visitor Button -->
+  <div class="search-container" style="display: flex; gap: 8px;">
     <input 
       type="search" 
       id="searchInput" 
-      class="search-input-slim" 
-      placeholder="Zoek leiding..." 
+      class="search-input-pill" 
+      placeholder="Zoek leiding of bezoeker..." 
       autocomplete="off"
+      style="flex: 1;"
     >
+    <button id="btnOpenAddVisitor" class="btn-add-visitor-pill" title="Voeg een bezoeker toe die mee drinkt">
+      <span>➕</span> Bezoeker
+    </button>
   </div>
 
   <!-- Main Board View -->
@@ -96,20 +114,20 @@
 
   <!-- Stats View -->
   <div class="board-wrapper" id="tabStats" style="display: none;">
-    <div class="board-card" style="padding: 14px;">
+    <div class="board-card" style="padding: 16px;">
       <h3 style="font-size: 16px; margin-bottom: 12px; font-weight: 800;">📊 Drankjes Verbruik</h3>
       <div class="drinks-grid" id="statsDrinksGrid"></div>
 
-      <h3 style="font-size: 16px; margin: 18px 0 10px 0; font-weight: 800;">🏆 Top Turvers</h3>
+      <h3 style="font-size: 16px; margin: 18px 0 10px 0; font-weight: 800;">🏆 Volledige Rangschikking</h3>
       <div id="leaderboardList"></div>
     </div>
   </div>
 
   <!-- Settlement / Afrekening View -->
   <div class="board-wrapper" id="tabSettle" style="display: none;">
-    <div class="board-card" style="padding: 14px;">
+    <div class="board-card" style="padding: 16px;">
       <h3 style="font-size: 16px; margin-bottom: 6px; font-weight: 800;">💰 Afrekening & Verrekening</h3>
-      <p style="font-size: 12px; color: #705b45; margin-bottom: 12px;">1 streepje = € 1,00. Download hier de officiële PDF of deel via WhatsApp.</p>
+      <p style="font-size: 12px; color: #705b45; margin-bottom: 14px;">1 streepje = € 1,00. Download hier de officiële PDF of deel via WhatsApp.</p>
 
       <button class="btn-pdf-download" id="btnDownloadPdf">
         <span>📄 Download PDF Verrekening</span>
@@ -132,69 +150,46 @@
 
   <!-- Admin Panel View -->
   <div class="board-wrapper" id="tabAdmin" style="display: none;">
-    <div class="board-card" style="padding: 14px;">
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+    <div class="board-card" style="padding: 16px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
         <h3 style="font-size: 17px; font-weight: 800; color: #991b1b;">⚙️ Adminpaneel</h3>
-        <span style="font-size: 11px; background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px; font-weight: 700;">Ingelogd</span>
+        <span style="font-size: 11px; background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 999px; font-weight: 800;">Ingelogd</span>
       </div>
 
-      <!-- Quick PDF from Admin -->
-      <button class="btn-pdf-download" id="btnAdminDownloadPdf" style="margin-bottom: 12px;">
+      <button class="btn-pdf-download" id="btnAdminDownloadPdf" style="margin-bottom: 14px;">
         <span>📄 Download PDF Afrekening (A4)</span>
       </button>
 
-      <!-- Danger zone: Wipe all tallies -->
-      <div style="background: #fff5f5; border: 1.5px solid #f87171; border-radius: 8px; padding: 10px; margin-bottom: 14px;">
+      <div style="background: #fff5f5; border: 1.5px solid #f87171; border-radius: 16px; padding: 12px; margin-bottom: 14px;">
         <strong style="font-size: 13px; color: #991b1b; display: block; margin-bottom: 4px;">⚠️ Strepen Wissen</strong>
-        <p style="font-size: 11px; color: #7f1d1d; margin-bottom: 8px;">Zet alle streepjes van iedereen in 1 klik op 0. Er wordt automatisch een backup-archief bewaard.</p>
-        <button class="btn-reset-karton" id="btnAdminClearAll" style="padding: 8px; font-size: 13px; margin: 0;">
+        <p style="font-size: 11px; color: #7f1d1d; margin-bottom: 8px;">Zet alle streepjes van iedereen in 1 klik op 0.</p>
+        <button class="btn-reset-karton" id="btnAdminClearAll" style="padding: 10px; font-size: 13px; margin: 0;">
           🗑️ Wis ALLE Strepen naar 0
         </button>
       </div>
 
-      <!-- Member Admin List -->
-      <h4 style="font-size: 14px; font-weight: 700; margin-bottom: 8px; color: #291a0e;">Leden Beheren & Corrigeren</h4>
-      <div style="background: #faf4eb; border: 1px solid #d8c2a7; border-radius: 8px; max-height: 40vh; overflow-y: auto; margin-bottom: 14px;" id="adminMembersList">
+      <h4 style="font-size: 14px; font-weight: 800; margin-bottom: 8px; color: #291a0e;">Leden & Bezoekers Beheren</h4>
+      <div style="background: #faf4eb; border: 1px solid #d8c2a7; border-radius: 16px; max-height: 40vh; overflow-y: auto; margin-bottom: 14px;" id="adminMembersList">
         <!-- Injected member rows with admin buttons -->
       </div>
 
-      <!-- Add New Member -->
-      <div style="background: #fdfaf5; border: 1px solid #d8c2a7; border-radius: 8px; padding: 10px; margin-bottom: 14px;">
-        <strong style="font-size: 13px; color: #3f2a15; display: block; margin-bottom: 6px;">➕ Nieuw Lid Toevoegen</strong>
+      <div style="background: #fdfaf5; border: 1px solid #d8c2a7; border-radius: 16px; padding: 12px; margin-bottom: 14px;">
+        <strong style="font-size: 13px; color: #3f2a15; display: block; margin-bottom: 6px;">➕ Nieuw Lid / Bezoeker Toevoegen</strong>
         <div style="display: flex; gap: 6px;">
-          <input type="text" id="inputNewMemberName" class="search-input-slim" placeholder="Naam leiding..." style="flex: 1;">
-          <button class="btn-primary-action" id="btnAddMemberSubmit" style="width: auto; padding: 8px 14px; font-size: 13px;">Toevoegen</button>
+          <input type="text" id="inputNewMemberName" class="search-input-pill" placeholder="Naam leiding of bezoeker..." style="flex: 1;">
+          <button class="btn-primary-action" id="btnAddMemberSubmit" style="width: auto; padding: 8px 16px; font-size: 13px;">Toevoegen</button>
         </div>
-      </div>
-
-      <!-- Cloud Sync & Server Settings (For GitHub Pages deployment) -->
-      <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 10px; margin-bottom: 14px;">
-        <strong style="font-size: 13px; color: #166534; display: block; margin-bottom: 4px;">☁️ Cloud Synchronisatie (GitHub Pages)</strong>
-        <p style="font-size: 11px; color: #15803d; margin-bottom: 6px;">Om op GitHub Pages alle telefoons live te laten synchroniseren:</p>
-        <input type="text" id="inputBackendUrl" class="search-input-slim" placeholder="Backend URL (bv. https://ksa-streep.onrender.com of Firebase)" style="margin-bottom: 6px; font-size: 12px;">
-        <button class="btn-primary-action" id="btnSaveBackendUrl" style="font-size: 12px; padding: 6px; background: #16a34a; box-shadow: 0 2px 0 #15803d;">Verbinding Opslaan</button>
-      </div>
-
-      <!-- Change Admin Password -->
-      <div style="border-top: 1px dashed #ceb799; padding-top: 10px;">
-        <details>
-          <summary style="font-size: 12px; font-weight: 700; color: #634b35; cursor: pointer;">🔑 Admin Wachtwoord Wijzigen</summary>
-          <div style="margin-top: 8px;">
-            <input type="password" id="inputNewAdminPwd" class="search-input-slim" placeholder="Nieuw admin wachtwoord..." style="margin-bottom: 6px;">
-            <button class="btn-primary-action" id="btnChangeAdminPwd" style="font-size: 12px; padding: 6px;">Opslaan</button>
-          </div>
-        </details>
       </div>
     </div>
   </div>
 
   <!-- QR / Connect View -->
   <div class="board-wrapper" id="tabConnect" style="display: none;">
-    <div class="board-card" style="padding: 16px; text-align: center;">
+    <div class="board-card" style="padding: 18px; text-align: center;">
       <h3 style="font-size: 16px; margin-bottom: 6px; font-weight: 800;">📱 Verbind je Smartphone</h3>
       <p style="font-size: 12px; color: #705b45; margin-bottom: 14px;">Scan met je iPhone of Android camera om live mee te turven:</p>
       
-      <div style="background: white; padding: 12px; border-radius: 10px; width: fit-content; margin: 0 auto 12px auto; border: 1px solid #ceb799;">
+      <div style="background: white; padding: 12px; border-radius: 16px; width: fit-content; margin: 0 auto 12px auto; border: 1px solid #ceb799;">
         <img id="qrCodeImg" style="width: 200px; height: 200px; display: block;" alt="QR Code">
       </div>
 
@@ -202,13 +197,13 @@
         <a id="qrUrlLink" href="#" target="_blank" style="color: inherit; text-decoration: underline;">...</a>
       </p>
 
-      <div style="margin-top: 14px; font-size: 12px; color: #553e28; background: #fdf5ea; padding: 8px; border-radius: 6px;">
+      <div style="margin-top: 14px; font-size: 12px; color: #553e28; background: #fdf5ea; padding: 10px; border-radius: 12px;">
         💡 <strong>Tip:</strong> Tik in Safari/Chrome op <em>'Zet op beginscherm'</em> voor een echte schermvullende app zonder browserbalk!
       </div>
     </div>
   </div>
 
-  <!-- Bottom Navigation Bar -->
+  <!-- Floating Pill Bottom Navigation Dock -->
   <nav class="bottom-nav">
     <button class="nav-tab-btn active" data-tab="tabKarton">
       <span class="nav-icon">📋</span>
@@ -232,7 +227,50 @@
     </button>
   </nav>
 
-  <!-- Admin Login Modal -->
+  <!-- Modal: Wie ben jij? (Centered on PC, completely scrollable) -->
+  <div class="modal-overlay" id="selectUserModal">
+    <div class="bottom-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <span class="sheet-title">Wie ben jij?</span>
+        <button class="sheet-close-btn" id="btnCloseSelectUser">✕</button>
+      </div>
+      <p style="font-size: 13px; color: #705b45; margin-bottom: 12px; flex-shrink: 0;">
+        Kies jouw naam. Jouw gsm onthoudt dit permanent zodat je met 1 tik kan strepen!
+      </p>
+      <div class="sheet-scroll-body">
+        <div id="selectUserList" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Bezoeker Toevoegen -->
+  <div class="modal-overlay" id="addVisitorModal">
+    <div class="bottom-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <span class="sheet-title">➕ Bezoeker Toevoegen</span>
+        <button class="sheet-close-btn" id="btnCloseAddVisitor">✕</button>
+      </div>
+      <p style="font-size: 13px; color: #705b45; margin-bottom: 14px;">
+        Voeg iemand toe die eenmalig of op bezoek mee komt drinken (bv. <em>Kookouder Marc</em>, <em>Oud-leiding Jan</em>).
+      </p>
+
+      <input 
+        type="text" 
+        id="inputVisitorName" 
+        class="search-input-pill" 
+        placeholder="Naam van de bezoeker..." 
+        style="margin-bottom: 14px;"
+      >
+
+      <button class="btn-primary-action" id="btnSubmitAddVisitor">
+        Toevoegen aan Streepkarton
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal: Admin Toegang (Centered on PC, submit button fully visible!) -->
   <div class="modal-overlay" id="adminLoginModal">
     <div class="bottom-sheet">
       <div class="sheet-handle"></div>
@@ -240,14 +278,16 @@
         <span class="sheet-title">🔑 Admin Toegang</span>
         <button class="sheet-close-btn" id="btnCloseAdminLogin">✕</button>
       </div>
-      <p style="font-size: 13px; color: #705b45; margin-bottom: 12px;">Voer het admin wachtwoord in (standaard: <code>ksa</code>):</p>
+      <p style="font-size: 13px; color: #705b45; margin-bottom: 12px;">
+        Voer het admin wachtwoord in (standaard: <code>ksa</code>):
+      </p>
       
       <input 
         type="password" 
         id="inputAdminPassword" 
-        class="search-input-slim" 
+        class="search-input-pill" 
         placeholder="Admin wachtwoord..." 
-        style="margin-bottom: 12px; font-size: 16px;"
+        style="margin-bottom: 14px; font-size: 16px;"
       >
 
       <button class="btn-primary-action" id="btnSubmitAdminLogin">
@@ -256,20 +296,7 @@
     </div>
   </div>
 
-  <!-- User Selection Sheet -->
-  <div class="modal-overlay" id="selectUserModal">
-    <div class="bottom-sheet">
-      <div class="sheet-handle"></div>
-      <div class="sheet-header">
-        <span class="sheet-title">Wie ben jij?</span>
-        <button class="sheet-close-btn" id="btnCloseSelectUser">✕</button>
-      </div>
-      <p style="font-size: 13px; color: #705b45; margin-bottom: 12px;">Kies jouw naam zodat je op deze smartphone met 1 tik streepjes kan zetten!</p>
-      <div id="selectUserList" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; max-height: 55vh; overflow-y: auto;"></div>
-    </div>
-  </div>
-
-  <!-- PIN Entry Modal (Numeric Keypad) -->
+  <!-- Modal: Pincode Bevestigen (Numeric Keypad) -->
   <div class="modal-overlay" id="pinModal">
     <div class="bottom-sheet" id="pinSheet">
       <div class="sheet-handle"></div>
@@ -307,7 +334,7 @@
     </div>
   </div>
 
-  <!-- PIN Setup Modal -->
+  <!-- Modal: Pincode Instellen -->
   <div class="modal-overlay" id="setupPinModal">
     <div class="bottom-sheet">
       <div class="sheet-handle"></div>
@@ -318,7 +345,7 @@
 
       <div class="pin-prompt-box">
         <div class="pin-user-label" id="setupTargetName">...</div>
-        <div class="pin-sub-label">Kies een 4-cijferige code om streepjes te trekken.</div>
+        <div class="pin-sub-label">Kies een 4-cijferige code.</div>
       </div>
 
       <div style="max-width: 260px; margin: 0 auto 16px auto;">
@@ -329,7 +356,7 @@
           inputmode="numeric" 
           maxlength="4" 
           id="inputNewPin" 
-          class="search-input-slim" 
+          class="search-input-pill" 
           style="text-align: center; font-size: 22px; letter-spacing: 6px;" 
           placeholder="••••"
         >
@@ -341,7 +368,7 @@
           inputmode="numeric" 
           maxlength="4" 
           id="inputConfirmPin" 
-          class="search-input-slim" 
+          class="search-input-pill" 
           style="text-align: center; font-size: 22px; letter-spacing: 6px;" 
           placeholder="••••"
         >
@@ -353,23 +380,25 @@
     </div>
   </div>
 
-  <!-- Drink Picker Modal -->
+  <!-- Modal: Kies Drank (Includes Cara Rouge 🍒!) -->
   <div class="modal-overlay" id="drinkModal">
     <div class="bottom-sheet">
       <div class="sheet-handle"></div>
       <div class="sheet-header">
-        <span class="sheet-title">Kies Drank</span>
+        <span class="sheet-title">Kies je Drank</span>
         <button class="sheet-close-btn" id="btnCloseDrinkModal">✕</button>
       </div>
 
       <div class="pin-prompt-box" style="margin-bottom: 10px;">
         <div class="pin-user-label" id="drinkTargetName">...</div>
-        <div class="pin-sub-label">1 streepje = € 1,00</div>
+        <div class="pin-sub-label">Elk drankje kost 1 streepje (= € 1,00)</div>
       </div>
 
-      <div class="drinks-grid" id="drinksListGrid"></div>
+      <div class="sheet-scroll-body">
+        <div class="drinks-grid" id="drinksListGrid"></div>
+      </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;">
         <button class="btn-primary-action" id="btnConfirmDrinkOne">
           +1 Streepje
         </button>
@@ -380,7 +409,7 @@
     </div>
   </div>
 
-  <!-- Toast -->
+  <!-- Toast Notice -->
   <div class="toast-bar" id="toastBar">
     <span id="toastIcon">🍺</span>
     <span id="toastText">Streepje getrokken!</span>

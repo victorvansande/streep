@@ -1,4 +1,4 @@
-// KSA Streepkarton - Live Cloud Sync via ntfy.sh (werkt direct op GitHub Pages!)
+// KSA Streepkarton - Sleek & Ultra-Fast Mobile Client with Mini-Leaderboard & Cara Rouge
 
 const CLOUD_CHANNEL = 'ksa_streep_2026_victorvansande';
 
@@ -33,6 +33,7 @@ const DEFAULT_MEMBERS = [
 
 const DEFAULT_DRINKS = [
   { id: 'pintje', name: 'Pintje', icon: '🍺', price: 1.0 },
+  { id: 'cara_rouge', name: 'Cara Rouge', icon: '🍒', price: 1.0 },
   { id: 'cola', name: 'Cola', icon: '🥤', price: 1.0 },
   { id: 'cola_zero', name: 'Cola Zero', icon: '🥤', price: 1.0 },
   { id: 'fanta', name: 'Fanta', icon: '🍊', price: 1.0 },
@@ -54,7 +55,7 @@ let activeUser = null; // { id, name, pin }
 let adminPassword = null;
 let currentPendingAction = null;
 let currentPinInput = '';
-let selectedDrinkId = 'pintje';
+let selectedDrinkId = localStorage.getItem('ksa_selected_drink') || 'pintje';
 let targetMemberForDrink = null;
 let sseConnection = null;
 
@@ -186,7 +187,7 @@ function saveStoredUser(userObj) {
   try {
     const str = JSON.stringify(userObj);
     localStorage.setItem('ksa_streep_active_user', str);
-    setCookie('ksa_user_session', str, 3650); // 10 years permanent cookie!
+    setCookie('ksa_user_session', str, 3650);
     activeUser = userObj;
     updateMyQuickBanner();
   } catch (e) {}
@@ -201,10 +202,30 @@ function clearStoredUser() {
   } catch (e) {}
 }
 
+function getSelectedDrink() {
+  return state.drinks.find(d => d.id === selectedDrinkId) || state.drinks[0];
+}
+
+function updateDrinkSelectorUI() {
+  const current = getSelectedDrink();
+  const badge = document.getElementById('currentDrinkBadge');
+  const quickLabel = document.getElementById('quickAddLabel');
+
+  if (badge) {
+    badge.textContent = `${current.name} ${current.icon} (wijzig)`;
+  }
+  if (quickLabel) {
+    quickLabel.textContent = `${current.icon} +1 ${current.name}`;
+  }
+}
+
 function updateMyQuickBanner() {
   const nameEl = document.getElementById('myUserName');
   const countEl = document.getElementById('myUserCount');
   const actionRow = document.getElementById('myActionRow');
+  const choiceBtn = document.getElementById('btnMyQuickChoice');
+
+  updateDrinkSelectorUI();
 
   if (activeUser && state.members) {
     const member = state.members.find(m => m.id === activeUser.id);
@@ -214,6 +235,8 @@ function updateMyQuickBanner() {
       countEl.textContent = `${member.tallies} strepen (€ ${euro})`;
       actionRow.style.opacity = '1';
       actionRow.style.pointerEvents = 'auto';
+      choiceBtn.style.opacity = '1';
+      choiceBtn.style.pointerEvents = 'auto';
       return;
     }
   }
@@ -222,6 +245,7 @@ function updateMyQuickBanner() {
   countEl.textContent = 'Tik om te kiezen';
   actionRow.style.opacity = '0.4';
   actionRow.style.pointerEvents = 'none';
+  choiceBtn.style.opacity = '0.5';
 }
 
 function updateAdminBar() {
@@ -234,7 +258,6 @@ function recalculateState() {
   state.totalEuros = state.totalTallies * (state.pricePerTally || 1.0);
 }
 
-// Save local copy of entire state
 function saveLocalState() {
   try {
     localStorage.setItem('ksa_streep_karton_cache', JSON.stringify(state));
@@ -248,9 +271,59 @@ function loadLocalState() {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.members && parsed.members.length > 0) {
         state = parsed;
+        // Ensure Cara Rouge is present in loaded state
+        if (!state.drinks.some(d => d.id === 'cara_rouge')) {
+          state.drinks.splice(1, 0, { id: 'cara_rouge', name: 'Cara Rouge', icon: '🍒', price: 1.0 });
+        }
       }
     }
   } catch (e) {}
+}
+
+// Render Mini Leaderboard (Top 3)
+function renderMiniLeaderboard() {
+  const container = document.getElementById('podiumContent');
+  if (!container) return;
+
+  const sorted = [...state.members]
+    .filter(m => (m.tallies || 0) > 0)
+    .sort((a, b) => (b.tallies || 0) - (a.tallies || 0));
+
+  if (sorted.length === 0) {
+    container.innerHTML = `
+      <div class="podium-empty-hint">
+        🍺 De strijd om de Gouden Pint ligt nog open! Trek het eerste streepje!
+      </div>
+    `;
+    return;
+  }
+
+  const medals = ['🥇', '🥈', '🥉'];
+  const titles = ['1ste', '2de', '3de'];
+  let html = '';
+
+  for (let i = 0; i < 3; i++) {
+    const member = sorted[i];
+    if (member) {
+      html += `
+        <div class="podium-pill ${i === 0 ? 'rank-1' : ''}" onclick="window.app.quickAddOne('${member.id}')">
+          <span class="podium-medal">${medals[i]}</span>
+          <span class="podium-name">${member.name}</span>
+          <span class="podium-count">${member.tallies} strepen</span>
+        </div>
+      `;
+    } else {
+      html += `
+        <div class="podium-pill" style="opacity: 0.5;">
+          <span class="podium-medal">${medals[i]}</span>
+          <span class="podium-name" style="font-size: 11px;">Nog vrij</span>
+          <span class="podium-count">0</span>
+        </div>
+      `;
+    }
+  }
+
+  container.innerHTML = html;
 }
 
 // Apply a cloud event to state
@@ -339,6 +412,7 @@ function applySyncEvent(ev, isLocalOrigin = false) {
     renderStats();
     renderSettle();
     renderAdminMemberList();
+    renderMiniLeaderboard();
   }
   return stateChanged;
 }
@@ -348,10 +422,8 @@ async function publishCloudEvent(ev) {
   ev.eventId = ev.eventId || ('ev_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
   ev.timestamp = Date.now();
 
-  // Apply immediately locally
   applySyncEvent(ev, true);
 
-  // Publish to ntfy.sh
   try {
     await fetch(`https://ntfy.sh/${encodeURIComponent(CLOUD_CHANNEL)}`, {
       method: 'POST',
@@ -399,7 +471,6 @@ function connectCloudSync() {
   }
 }
 
-// Fetch historical events from ntfy.sh cache
 async function fetchCloudHistory() {
   try {
     const res = await fetch(`https://ntfy.sh/${encodeURIComponent(CLOUD_CHANNEL)}/json?poll=1&since=30d`);
@@ -489,9 +560,14 @@ function renderMembers() {
   });
 
   if (filtered.length === 0) {
-    container.innerHTML = `<div style="text-align: center; padding: 20px; color: #886f54; font-size: 13px;">Geen leiding gevonden met '${search}'</div>`;
+    container.innerHTML = `<div style="text-align: center; padding: 20px; color: #886f54; font-size: 13px;">Geen leiding of bezoeker gevonden met '${search}'</div>`;
     return;
   }
+
+  // Calculate ranks for medals
+  const sortedRanks = [...state.members]
+    .filter(m => (m.tallies || 0) > 0)
+    .sort((a, b) => b.tallies - a.tallies);
 
   let html = '';
   filtered.forEach((m, idx) => {
@@ -499,10 +575,17 @@ function renderMembers() {
     const euro = (m.tallies * (state.pricePerTally || 1.0)).toFixed(2).replace('.', ',');
     const pinWarning = !m.hasPin ? `<span class="member-row-pin-status needs-setup">⚠️ Stel PIN in</span>` : '';
 
+    // Show medal badge if top 3
+    const rankIndex = sortedRanks.findIndex(r => r.id === m.id);
+    let medalTag = '';
+    if (rankIndex === 0) medalTag = '🥇 ';
+    else if (rankIndex === 1) medalTag = '🥈 ';
+    else if (rankIndex === 2) medalTag = '🥉 ';
+
     html += `
       <div class="member-row ${isMe ? 'is-current-user' : ''}" data-id="${m.id}">
         <div class="member-info-col" onclick="window.app.onMemberNameTap('${m.id}')">
-          <span class="member-row-name">${m.name}</span>
+          <span class="member-row-name">${medalTag}${m.name}</span>
           ${pinWarning}
         </div>
 
@@ -515,7 +598,7 @@ function renderMembers() {
             <span class="badge-count">${m.tallies}</span>
             <span class="badge-euro">€${euro}</span>
           </div>
-          <button class="btn-row-add" onclick="window.app.quickAddOne('${m.id}')" title="Streepje zetten">+1</button>
+          <button class="btn-row-add-pill" onclick="window.app.quickAddOne('${m.id}')" title="Streepje zetten">+1</button>
         </div>
       </div>
     `;
@@ -527,10 +610,11 @@ function renderMembers() {
   document.getElementById('grandTallies').textContent = state.totalTallies || 0;
   document.getElementById('grandEuros').textContent = `€ ${((state.totalEuros || 0)).toFixed(0)}`;
   document.getElementById('boardTitle').textContent = state.title || 'Karton Najaar 2026';
-  document.getElementById('memberCountHeader').textContent = `${state.members.length} Leiding`;
+  document.getElementById('memberCountHeader').textContent = `${state.members.length} Tellers`;
 
   updateMyQuickBanner();
   updateAdminBar();
+  renderMiniLeaderboard();
 }
 
 // Render Admin Member Controls
@@ -582,7 +666,7 @@ function renderStats() {
   (state.drinks || []).forEach(d => {
     const count = drinkTotals[d.id] || 0;
     html += `
-      <div class="drink-pill">
+      <div class="drink-pill-card">
         <span class="drink-pill-icon">${d.icon}</span>
         <div>
           <div class="drink-pill-name">${d.name}</div>
@@ -596,13 +680,13 @@ function renderStats() {
   const sorted = [...state.members].sort((a, b) => (b.tallies || 0) - (a.tallies || 0));
   const boardEl = document.getElementById('leaderboardList');
   let boardHtml = '';
-  sorted.slice(0, 10).forEach((m, idx) => {
+  sorted.forEach((m, idx) => {
     const medals = ['🥇', '🥈', '🥉'];
     const rank = medals[idx] || `#${idx + 1}`;
     boardHtml += `
-      <div style="display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #ebd9c2; font-size: 14px;">
+      <div style="display: flex; justify-content: space-between; padding: 8px 4px; border-bottom: 1px solid #ebd9c2; font-size: 14px;">
         <div><span>${rank}</span> <strong class="font-marker" style="margin-left: 6px;">${m.name}</strong></div>
-        <div style="font-weight: 700; color: #0f356b;">${m.tallies} strepen</div>
+        <div style="font-weight: 800; color: #0f356b;">${m.tallies} strepen</div>
       </div>
     `;
   });
@@ -618,7 +702,7 @@ function renderSettle() {
   sorted.forEach(m => {
     const count = m.tallies || 0;
     html += `
-      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #ebd9c2; font-size: 14px;">
+      <div style="display: flex; justify-content: space-between; padding: 7px 4px; border-bottom: 1px solid #ebd9c2; font-size: 14px;">
         <span class="font-marker" style="font-size: 16px;">${m.name}</span>
         <span style="font-weight: 700; color: #8f1d1d;">${count} strepen = € ${count},00</span>
       </div>
@@ -626,7 +710,7 @@ function renderSettle() {
   });
 
   html += `
-    <div style="display: flex; justify-content: space-between; padding: 10px 0 4px 0; font-size: 16px; font-weight: 800; color: #8f1d1d;">
+    <div style="display: flex; justify-content: space-between; padding: 12px 4px 4px 4px; font-size: 16px; font-weight: 800; color: #8f1d1d;">
       <span>TOTAAL BORD</span>
       <span>${state.totalTallies} = € ${state.totalTallies},00</span>
     </div>
@@ -652,7 +736,7 @@ function generatePdfReport() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-  doc.setFillColor(163, 34, 34);
+  doc.setFillColor(185, 28, 28);
   doc.rect(0, 0, 210, 24, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(255, 255, 255);
@@ -677,7 +761,7 @@ function generatePdfReport() {
   doc.text(`Totaal Consumpties: ${state.totalTallies} streepjes (1 streep = € 1,00)`, 20, 46);
 
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(163, 34, 34);
+  doc.setTextColor(185, 28, 28);
   doc.setFontSize(14);
   doc.text(`TOTAAL TE ONTVANGEN: € ${state.totalTallies},00`, 110, 42);
 
@@ -692,11 +776,11 @@ function generatePdfReport() {
 
   doc.autoTable({
     startY: 57,
-    head: [['Nr.', 'Naam Leiding', 'Aantal Strepen', 'Te Betalen', 'Handtekening / Betaald']],
+    head: [['Nr.', 'Naam Leiding / Bezoeker', 'Aantal Strepen', 'Te Betalen', 'Handtekening / Betaald']],
     body: tableData,
     theme: 'striped',
     headStyles: {
-      fillColor: [163, 34, 34],
+      fillColor: [185, 28, 28],
       textColor: [255, 255, 255],
       fontStyle: 'bold',
       fontSize: 10
@@ -704,15 +788,15 @@ function generatePdfReport() {
     bodyStyles: { fontSize: 9, textColor: [30, 26, 22] },
     columnStyles: {
       0: { cellWidth: 12, halign: 'center' },
-      1: { cellWidth: 50, fontStyle: 'bold' },
+      1: { cellWidth: 55, fontStyle: 'bold' },
       2: { cellWidth: 35, halign: 'center' },
       3: { cellWidth: 35, halign: 'right' },
-      4: { cellWidth: 50, halign: 'center' }
+      4: { cellWidth: 45, halign: 'center' }
     },
     foot: [['', 'TOTAAL BORD', String(state.totalTallies), `€ ${state.totalTallies},00`, '']],
     footStyles: {
       fillColor: [244, 232, 213],
-      textColor: [163, 34, 34],
+      textColor: [185, 28, 28],
       fontStyle: 'bold',
       fontSize: 10
     }
@@ -722,17 +806,19 @@ function generatePdfReport() {
   doc.setTextColor(100, 80, 60);
   doc.setFontSize(8);
   doc.setFont('helvetica', 'italic');
-  doc.text('Gelieve het openstaande bedrag over te schrijven naar de KSA rekening of via Payconiq.', 14, Math.min(285, finalY + 10));
+  doc.text('Gelieve het openstaande bedrag over te schrijven naar de KSA leidingrekening of via Payconiq.', 14, Math.min(285, finalY + 10));
 
   const filename = `KSA_Streepkarton_Afrekening_${new Date().toISOString().slice(0, 10)}.pdf`;
   doc.save(filename);
   showToast('PDF Verrekening gedownload! 📄', '📄');
 }
 
-// Admin Action Handlers
+// Actions triggered by user interface
 window.app = {
   selectDrinkItem: (id) => {
     selectedDrinkId = id;
+    localStorage.setItem('ksa_selected_drink', id);
+    updateDrinkSelectorUI();
     openDrinkPicker(targetMemberForDrink);
   },
 
@@ -756,14 +842,15 @@ window.app = {
     const member = state.members.find(m => m.id === memberId);
     if (!member) return;
 
+    const currentDrink = getSelectedDrink();
+
     if (adminPassword) {
       window.app.adminTally(memberId, 1);
       return;
     }
 
-    // 1-TAP FAST TALLY FOR OWN LOGGED IN PHONE (NO PIN ASKED EVER!)
     if (activeUser && activeUser.id === memberId) {
-      directTally(memberId, 1, 'pintje', member.name);
+      directTally(memberId, 1, currentDrink.id, member.name, currentDrink.name);
       return;
     }
 
@@ -772,14 +859,13 @@ window.app = {
       return;
     }
 
-    // Proxy tally for a friend
     openPinModal({
       type: 'tally',
       memberId: member.id,
       memberName: member.name,
       count: 1,
-      drinkId: 'pintje',
-      drinkName: 'pint'
+      drinkId: currentDrink.id,
+      drinkName: currentDrink.name
     });
   },
 
@@ -803,11 +889,12 @@ window.app = {
 
   adminTally: async (memberId, count) => {
     if (!adminPassword) return;
+    const currentDrink = getSelectedDrink();
     publishCloudEvent({
       type: 'tally',
       memberId,
       count,
-      drinkId: 'pintje'
+      drinkId: currentDrink.id
     });
     playMarkerSound(count);
     triggerHaptic('heavy');
@@ -838,7 +925,7 @@ window.app = {
   },
 
   adminRemoveMember: async (memberId, name) => {
-    if (!confirm(`'${name}' verwijderen?`)) return;
+    if (!confirm(`'${name}' van het karton verwijderen?`)) return;
     publishCloudEvent({
       type: 'remove_member',
       memberId
@@ -854,7 +941,7 @@ function openSelectUserModal() {
   const sorted = [...state.members].sort((a, b) => a.name.localeCompare(b.name));
   sorted.forEach(m => {
     html += `
-      <button class="keypad-btn" style="padding: 10px 6px; font-size: 15px; font-weight: 700;" onclick="window.app.onSelectUserChoice('${m.id}')">
+      <button class="keypad-btn" style="padding: 12px 8px; font-size: 15px; font-weight: 700; border-radius: 14px;" onclick="window.app.onSelectUserChoice('${m.id}')">
         ${m.name}
       </button>
     `;
@@ -865,6 +952,16 @@ function openSelectUserModal() {
 
 function closeSelectUserModal() {
   document.getElementById('selectUserModal').classList.remove('open');
+}
+
+function openAddVisitorModal() {
+  document.getElementById('inputVisitorName').value = '';
+  document.getElementById('addVisitorModal').classList.add('open');
+  setTimeout(() => document.getElementById('inputVisitorName').focus(), 150);
+}
+
+function closeAddVisitorModal() {
+  document.getElementById('addVisitorModal').classList.remove('open');
 }
 
 function openPinModal(action) {
@@ -880,7 +977,7 @@ function openPinModal(action) {
   } else if (action.count === 5) {
     document.getElementById('pinTargetSub').textContent = `Pincode van ${member.name} voor ⚡ 5 strepen`;
   } else {
-    document.getElementById('pinTargetSub').textContent = `Pincode van ${member.name} (+${action.count || 1} ${action.drinkName || 'pint'})`;
+    document.getElementById('pinTargetSub').textContent = `Pincode van ${member.name} (+${action.count || 1} ${action.drinkName || 'drank'})`;
   }
 
   document.getElementById('pinModal').classList.add('open');
@@ -916,7 +1013,6 @@ async function submitPinAction(pin) {
   const action = currentPendingAction;
 
   if (action.type === 'setActiveUser') {
-    // Save permanently in cookie + local storage
     saveStoredUser({ id: action.memberId, name: action.memberName, pin });
     playSuccessChime();
     showToast(`Ingelogd als ${action.memberName}!`, '👋');
@@ -925,12 +1021,13 @@ async function submitPinAction(pin) {
     return;
   }
 
-  // Tally event
+  const currentDrink = getSelectedDrink();
+
   publishCloudEvent({
     type: 'tally',
     memberId: action.memberId,
     count: action.count || 1,
-    drinkId: action.drinkId || 'pintje'
+    drinkId: action.drinkId || currentDrink.id
   });
 
   playMarkerSound(action.count || 1);
@@ -987,7 +1084,6 @@ async function submitNewPin() {
       pinHash: pin1
     });
 
-    // Save permanently in cookie on this phone!
     saveStoredUser({ id: member.id, name: member.name, pin: pin1 });
   }
 
@@ -1001,14 +1097,14 @@ async function submitNewPin() {
 function openDrinkPicker(memberId) {
   targetMemberForDrink = memberId;
   const member = state.members.find(m => m.id === memberId);
-  document.getElementById('drinkTargetName').textContent = member ? member.name : '';
+  document.getElementById('drinkTargetName').textContent = member ? member.name : (activeUser ? activeUser.name : 'Leiding');
 
   const grid = document.getElementById('drinksListGrid');
   let html = '';
   (state.drinks || []).forEach(d => {
     const sel = d.id === selectedDrinkId ? 'selected' : '';
     html += `
-      <div class="drink-pill ${sel}" onclick="window.app.selectDrinkItem('${d.id}')">
+      <div class="drink-pill-card ${sel}" onclick="window.app.selectDrinkItem('${d.id}')">
         <span class="drink-pill-icon">${d.icon}</span>
         <div>
           <div class="drink-pill-name">${d.name}</div>
@@ -1026,8 +1122,7 @@ function closeDrinkModal() {
   targetMemberForDrink = null;
 }
 
-// Direct 1-tap tally for own phone
-function directTally(memberId, count, drinkId, memberName) {
+function directTally(memberId, count, drinkId, memberName, drinkName) {
   publishCloudEvent({
     type: 'tally',
     memberId,
@@ -1036,7 +1131,7 @@ function directTally(memberId, count, drinkId, memberName) {
   });
   playMarkerSound(count);
   triggerHaptic('heavy');
-  showToast(`+${count} streep voor ${memberName}!`, '✍️');
+  showToast(`+${count} ${drinkName || 'drank'} voor ${memberName}!`, '✍️');
 }
 
 // Initial Loading
@@ -1049,12 +1144,13 @@ async function initApp() {
   renderStats();
   renderSettle();
   renderAdminMemberList();
+  renderMiniLeaderboard();
+  updateDrinkSelectorUI();
 
   if (!activeUser && !adminPassword) {
     setTimeout(openSelectUserModal, 500);
   }
 
-  // Connect to live ntfy.sh pub/sub stream
   connectCloudSync();
   fetchCloudHistory();
 
@@ -1070,10 +1166,44 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnSwitchUser').addEventListener('click', openSelectUserModal);
   document.getElementById('btnCloseSelectUser').addEventListener('click', closeSelectUserModal);
 
-  // Quick Action Buttons (1-TAP ON PHONE - NO PIN ASKED EVER!)
+  // Add Visitor Modal
+  document.getElementById('btnOpenAddVisitor').addEventListener('click', openAddVisitorModal);
+  document.getElementById('btnCloseAddVisitor').addEventListener('click', closeAddVisitorModal);
+
+  document.getElementById('btnSubmitAddVisitor').addEventListener('click', () => {
+    const name = document.getElementById('inputVisitorName').value.trim();
+    if (!name) {
+      alert('Vul een naam in');
+      return;
+    }
+
+    publishCloudEvent({
+      type: 'add_member',
+      member: {
+        id: 'm_' + Date.now(),
+        name: name,
+        hasPin: false,
+        tallies: 0,
+        drinks: {},
+        isVisitor: true
+      }
+    });
+
+    closeAddVisitorModal();
+    playSuccessChime();
+    showToast(`${name} toegevoegd!`, '➕');
+  });
+
+  // Dedicated Drink Selector Button in Quick Bar
+  document.getElementById('btnMyQuickChoice').addEventListener('click', () => {
+    openDrinkPicker(activeUser ? activeUser.id : null);
+  });
+
+  // Quick Action Buttons (1-TAP ON PHONE)
   document.getElementById('btnMyQuickBeer').addEventListener('click', () => {
     if (activeUser) {
-      directTally(activeUser.id, 1, 'pintje', activeUser.name);
+      const current = getSelectedDrink();
+      directTally(activeUser.id, 1, current.id, activeUser.name, current.name);
     } else {
       openSelectUserModal();
     }
@@ -1081,15 +1211,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('btnMyQuickFive').addEventListener('click', () => {
     if (activeUser) {
-      directTally(activeUser.id, 5, 'pintje', activeUser.name);
-    } else {
-      openSelectUserModal();
-    }
-  });
-
-  document.getElementById('btnMyQuickChoice').addEventListener('click', () => {
-    if (activeUser) {
-      openDrinkPicker(activeUser.id);
+      const current = getSelectedDrink();
+      directTally(activeUser.id, 5, current.id, activeUser.name, current.name);
     } else {
       openSelectUserModal();
     }
@@ -1097,9 +1220,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Drink modal actions
   document.getElementById('btnConfirmDrinkOne').addEventListener('click', () => {
-    if (!targetMemberForDrink) return;
-    const memId = targetMemberForDrink;
-    const drId = selectedDrinkId;
+    const memId = targetMemberForDrink || (activeUser ? activeUser.id : null);
+    if (!memId) {
+      closeDrinkModal();
+      return;
+    }
+    const current = getSelectedDrink();
     closeDrinkModal();
 
     if (adminPassword) {
@@ -1108,7 +1234,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (activeUser && activeUser.id === memId) {
-      directTally(memId, 1, drId, activeUser.name);
+      directTally(memId, 1, current.id, activeUser.name, current.name);
     } else {
       const mem = state.members.find(m => m.id === memId);
       openPinModal({
@@ -1116,15 +1242,19 @@ document.addEventListener('DOMContentLoaded', () => {
         memberId: memId,
         memberName: mem ? mem.name : '',
         count: 1,
-        drinkId: drId
+        drinkId: current.id,
+        drinkName: current.name
       });
     }
   });
 
   document.getElementById('btnConfirmDrinkFive').addEventListener('click', () => {
-    if (!targetMemberForDrink) return;
-    const memId = targetMemberForDrink;
-    const drId = selectedDrinkId;
+    const memId = targetMemberForDrink || (activeUser ? activeUser.id : null);
+    if (!memId) {
+      closeDrinkModal();
+      return;
+    }
+    const current = getSelectedDrink();
     closeDrinkModal();
 
     if (adminPassword) {
@@ -1133,7 +1263,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (activeUser && activeUser.id === memId) {
-      directTally(memId, 5, drId, activeUser.name);
+      directTally(memId, 5, current.id, activeUser.name, current.name);
     } else {
       const mem = state.members.find(m => m.id === memId);
       openPinModal({
@@ -1141,7 +1271,8 @@ document.addEventListener('DOMContentLoaded', () => {
         memberId: memId,
         memberName: mem ? mem.name : '',
         count: 5,
-        drinkId: drId
+        drinkId: current.id,
+        drinkName: current.name
       });
     }
   });
