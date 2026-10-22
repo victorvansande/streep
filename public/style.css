@@ -23,8 +23,7 @@
 body {
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   background-color: var(--bg-color);
-  background-image: 
-    radial-gradient(#d6c2a8 1px, transparent 1px);
+  background-image: radial-gradient(#d6c2a8 1px, transparent 1px);
   background-size: 20px 20px;
   color: var(--ink);
   min-height: 100vh;
@@ -107,7 +106,42 @@ body {
   background: #ef4444;
 }
 
-/* Fast User Hero Banner ("Mijn Snelle Streepjes") */
+.btn-admin-icon {
+  background: #e8d5be;
+  border: 1px solid #baa284;
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #3f2a15;
+}
+
+/* Admin Alert Banner */
+.admin-active-bar {
+  background: #fee2e2;
+  border: 1.5px solid #ef4444;
+  border-radius: 8px;
+  margin: 6px 12px 2px 12px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #991b1b;
+  font-weight: 700;
+}
+
+.btn-exit-admin {
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+/* Fast User Hero Banner */
 .my-quick-banner {
   background: #fffdf9;
   border: 1.5px solid #c9b193;
@@ -238,9 +272,6 @@ body {
   color: var(--ink);
   outline: none;
   box-shadow: inset 0 1px 2px rgba(0,0,0,0.04);
-}
-.search-input-slim::placeholder {
-  color: #9e8870;
 }
 
 /* Compact Cardboard Board */
@@ -448,7 +479,7 @@ body {
   border-radius: 8px;
   font-size: 11px;
   font-weight: 600;
-  min-width: 60px;
+  min-width: 54px;
 }
 
 .nav-tab-btn.active {
@@ -486,7 +517,7 @@ body {
   border-top: 2px solid var(--card-border);
   border-radius: 18px 18px 0 0;
   width: 100%;
-  max-width: 500px;
+  max-width: 520px;
   max-height: 85vh;
   padding: 14px 18px calc(18px + var(--safe-bottom)) 18px;
   box-shadow: 0 -8px 25px rgba(0,0,0,0.2);
@@ -704,6 +735,28 @@ body {
   font-size: 15px;
   box-shadow: 0 2px 0 #7f1d1d;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-pdf-download {
+  width: 100%;
+  background: linear-gradient(180deg, #1e40af 0%, #1e3a8a 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 12px;
+  font-weight: 700;
+  font-size: 15px;
+  box-shadow: 0 2px 0 #172554;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
 .btn-whatsapp-share {
@@ -717,6 +770,10 @@ body {
   font-size: 15px;
   box-shadow: 0 2px 0 #128c7e;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   margin-bottom: 10px;
 }
 
@@ -732,4 +789,28 @@ body {
   box-shadow: 0 2px 0 #991b1b;
   cursor: pointer;
   margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* Admin member row controls */
+.admin-member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid #ebd9c2;
+  font-size: 14px;
+}
+
+.admin-btn-sm {
+  background: #f7eee1;
+  border: 1px solid #baa284;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
 }

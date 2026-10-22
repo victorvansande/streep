@@ -15,9 +15,30 @@ const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.join(__dirname, 'data');
 const STATE_FILE = path.join(DATA_DIR, 'streepkarton.json');
 const ARCHIVES_FILE = path.join(DATA_DIR, 'archives.json');
+const ADMIN_FILE = path.join(DATA_DIR, 'admin.json');
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+function getAdminConfig() {
+  if (fs.existsSync(ADMIN_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(ADMIN_FILE, 'utf-8'));
+    } catch (e) {}
+  }
+  const defaultAdmin = {
+    passwordHash: crypto.createHash('sha256').update('ksa').digest('hex') // Default password: ksa
+  };
+  fs.writeFileSync(ADMIN_FILE, JSON.stringify(defaultAdmin, null, 2), 'utf-8');
+  return defaultAdmin;
+}
+
+function verifyAdminPassword(pwd) {
+  if (!pwd) return false;
+  const admin = getAdminConfig();
+  const inputHash = crypto.createHash('sha256').update(String(pwd).trim()).digest('hex');
+  return inputHash === admin.passwordHash;
 }
 
 // Default initial state
@@ -404,6 +425,148 @@ app.post('/api/settle', (req, res) => {
 
 app.get('/api/archives', (req, res) => {
   res.json(loadArchives());
+});
+
+// ================= ADMIN ROUTES =================
+app.post('/api/admin/login', (req, res) => {
+  const { password } = req.body;
+  if (verifyAdminPassword(password)) {
+    return res.json({ success: true, message: 'Admin ingelogd' });
+  }
+  return res.status(401).json({ error: 'Verkeerd admin wachtwoord' });
+});
+
+app.post('/api/admin/change-password', (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!verifyAdminPassword(currentPassword)) {
+    return res.status(401).json({ error: 'Huidig admin wachtwoord klopt niet' });
+  }
+  if (!newPassword || newPassword.trim().length < 3) {
+    return res.status(400).json({ error: 'Nieuw wachtwoord moet minstens 3 tekens zijn' });
+  }
+  const admin = getAdminConfig();
+  admin.passwordHash = crypto.createHash('sha256').update(String(newPassword).trim()).digest('hex');
+  fs.writeFileSync(ADMIN_FILE, JSON.stringify(admin, null, 2), 'utf-8');
+  res.json({ success: true, message: 'Admin wachtwoord succesvol gewijzigd' });
+});
+
+// Admin Tally: add/subtract tallies for any member without PIN!
+app.post('/api/admin/tally', (req, res) => {
+  const { password, memberId, count = 1, drinkId = 'pintje' } = req.body;
+  if (!verifyAdminPassword(password)) {
+    return res.status(401).json({ error: 'Ongeldig admin wachtwoord' });
+  }
+
+  const member = state.members.find(m => m.id === memberId);
+  if (!member) return res.status(404).json({ error: 'Lid niet gevonden' });
+
+  const drink = state.drinks.find(d => d.id === drinkId) || state.drinks[0];
+  const delta = parseInt(count, 10) || 1;
+
+  member.tallies = Math.max(0, (member.tallies || 0) + delta);
+  if (!member.drinks) member.drinks = {};
+  member.drinks[drink.id] = Math.max(0, (member.drinks[drink.id] || 0) + delta);
+
+  const logEntry = {
+    id: 'log_' + Date.now(),
+    timestamp: new Date().toISOString(),
+    memberId: member.id,
+    memberName: member.name,
+    count: delta,
+    drinkId: drink.id,
+    drinkName: drink.name,
+    adminOverride: true
+  };
+  state.history.unshift(logEntry);
+  if (state.history.length > 500) state.history.pop();
+
+  saveState(state);
+  broadcast('TALLY_ADDED', {
+    memberId: member.id,
+    memberName: member.name,
+    count: delta,
+    drink,
+    newTotal: member.tallies
+  });
+
+  res.json({ success: true, tallies: member.tallies });
+});
+
+// Admin: Set exact tallies for a member
+app.post('/api/admin/set-member-tallies', (req, res) => {
+  const { password, memberId, tallies } = req.body;
+  if (!verifyAdminPassword(password)) {
+    return res.status(401).json({ error: 'Ongeldig admin wachtwoord' });
+  }
+
+  const member = state.members.find(m => m.id === memberId);
+  if (!member) return res.status(404).json({ error: 'Lid niet gevonden' });
+
+  member.tallies = Math.max(0, parseInt(tallies, 10) || 0);
+  saveState(state);
+  broadcast('STATE_UPDATED');
+  res.json({ success: true, tallies: member.tallies });
+});
+
+// Admin: Reset member PIN
+app.post('/api/admin/reset-member-pin', (req, res) => {
+  const { password, memberId } = req.body;
+  if (!verifyAdminPassword(password)) {
+    return res.status(401).json({ error: 'Ongeldig admin wachtwoord' });
+  }
+
+  const member = state.members.find(m => m.id === memberId);
+  if (!member) return res.status(404).json({ error: 'Lid niet gevonden' });
+
+  member.pinHash = '';
+  member.hasPin = false;
+  saveState(state);
+  broadcast('PIN_RESET', { memberId: member.id, memberName: member.name });
+  res.json({ success: true, message: `Pincode van ${member.name} gereset!` });
+});
+
+// Admin: Wipe/clear all tallies to 0 (with automated archive backup)
+app.post('/api/admin/clear-all', (req, res) => {
+  const { password, reason = 'Admin reset' } = req.body;
+  if (!verifyAdminPassword(password)) {
+    return res.status(401).json({ error: 'Ongeldig admin wachtwoord' });
+  }
+
+  // Backup current state to archives before clearing
+  const archives = loadArchives();
+  archives.unshift({
+    id: 'archive_backup_' + Date.now(),
+    title: (state.title || 'Karton') + ' (Backup voor reset)',
+    settledAt: new Date().toISOString(),
+    totalTallies: state.members.reduce((sum, m) => sum + (m.tallies || 0), 0),
+    totalEuros: state.members.reduce((sum, m) => sum + (m.tallies || 0), 0) * (state.pricePerTally || 1.0),
+    reason,
+    members: state.members.map(m => ({
+      name: m.name,
+      tallies: m.tallies || 0,
+      drinks: m.drinks || {}
+    }))
+  });
+  saveArchives(archives);
+
+  state.members.forEach(m => {
+    m.tallies = 0;
+    m.drinks = {};
+  });
+  state.history = [];
+  saveState(state);
+
+  broadcast('KARTON_CLEARED');
+  res.json({ success: true, message: 'Alle streepjes succesvol gewist naar 0' });
+});
+
+// Admin: Get history logs
+app.get('/api/admin/logs', (req, res) => {
+  const pwd = req.headers['x-admin-password'] || req.query.password;
+  if (!verifyAdminPassword(pwd)) {
+    return res.status(401).json({ error: 'Niet geautoriseerd' });
+  }
+  res.json(state.history || []);
 });
 
 // WebSocket connection handling

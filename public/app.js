@@ -1,4 +1,4 @@
-// KSA Streepkarton - Sleek & Ultra-Fast Mobile Client
+// KSA Streepkarton - Sleek & Ultra-Fast Mobile Client with Admin & PDF
 
 let state = {
   members: [],
@@ -10,7 +10,8 @@ let state = {
 };
 
 let activeUser = null; // { id, name, pin }
-let currentPendingAction = null; // for proxy tally or PIN setup
+let adminPassword = null; // cached during admin session
+let currentPendingAction = null;
 let currentPinInput = '';
 let selectedDrinkId = 'pintje';
 let targetMemberForDrink = null;
@@ -158,7 +159,12 @@ function updateMyQuickBanner() {
   actionRow.style.pointerEvents = 'none';
 }
 
-// Compact Turven SVG Generator (Blocks of 5)
+function updateAdminBar() {
+  const bar = document.getElementById('adminActiveBar');
+  bar.style.display = adminPassword ? 'flex' : 'none';
+}
+
+// Compact Turven SVG Generator
 function renderTurvenSvgCompact(tallyCount, seed = 0) {
   if (!tallyCount || tallyCount <= 0) {
     return '<span class="no-strepen-hint">Geen streepjes</span>';
@@ -173,7 +179,6 @@ function renderTurvenSvgCompact(tallyCount, seed = 0) {
     return (x - Math.floor(x)) * 2 - 1;
   }
 
-  // Draw 5-blocks
   for (let g = 0; g < fullFives; g++) {
     let paths = '';
     const xVals = [5, 11, 17, 23];
@@ -196,7 +201,6 @@ function renderTurvenSvgCompact(tallyCount, seed = 0) {
     `;
   }
 
-  // Draw remainder
   if (remainder > 0) {
     let paths = '';
     const xVals = [5, 11, 17, 23];
@@ -264,12 +268,45 @@ function renderMembers() {
 
   container.innerHTML = html;
 
-  // Header totals
   document.getElementById('grandTallies').textContent = state.totalTallies || 0;
   document.getElementById('grandEuros').textContent = `€ ${((state.totalEuros || 0)).toFixed(0)}`;
   document.getElementById('boardTitle').textContent = state.title || 'Karton Najaar 2026';
+  document.getElementById('memberCountHeader').textContent = `${state.members.length} Leiding`;
 
   updateMyQuickBanner();
+  updateAdminBar();
+}
+
+// Render Admin Member Controls
+function renderAdminMemberList() {
+  const container = document.getElementById('adminMembersList');
+  if (!container) return;
+
+  let html = '';
+  const sorted = [...state.members].sort((a, b) => a.name.localeCompare(b.name));
+
+  sorted.forEach(m => {
+    html += `
+      <div class="admin-member-row">
+        <div>
+          <strong class="font-marker" style="font-size: 16px;">${m.name}</strong>
+          <div style="font-size: 11px; color: #705b45;">
+            ${m.tallies} strepen (€${m.tallies}) • ${m.hasPin ? 'PIN Actief' : '<span style="color:red;">Geen PIN</span>'}
+          </div>
+        </div>
+        <div style="display: flex; gap: 4px; align-items: center;">
+          <button class="admin-btn-sm" onclick="window.app.adminTally('${m.id}', 1)">+1</button>
+          <button class="admin-btn-sm" onclick="window.app.adminTally('${m.id}', -1)">-1</button>
+          <button class="admin-btn-sm" onclick="window.app.adminTally('${m.id}', 5)">+5</button>
+          <button class="admin-btn-sm" onclick="window.app.adminSetTalliesPrompt('${m.id}', ${m.tallies})">✏️</button>
+          <button class="admin-btn-sm" style="color: #b91c1c;" onclick="window.app.adminResetPin('${m.id}')" title="Reset PIN">🔑</button>
+          <button class="admin-btn-sm" style="color: #991b1b;" onclick="window.app.adminRemoveMember('${m.id}', '${m.name}')">✕</button>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
 }
 
 // Render Stats View
@@ -350,12 +387,258 @@ function showToast(text, icon = '🍺') {
   setTimeout(() => el.classList.remove('show'), 2200);
 }
 
-// User Selection Modal
+// PDF Generation
+function generatePdfReport() {
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    alert('PDF bibliotheek aan het laden, probeer over 2 seconden opnieuw.');
+    return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  // Header banner
+  doc.setFillColor(163, 34, 34); // KSA Red
+  doc.rect(0, 0, 210, 24, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16);
+  doc.text('KSA STREEPKARTON - TOTALE VERREKENING', 14, 15);
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Periode: ${state.title || 'Streepkarton'} | Datum opmaak: ${new Date().toLocaleDateString('nl-BE')} om ${new Date().toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}`, 14, 21);
+
+  // Summary box
+  doc.setFillColor(250, 243, 232);
+  doc.setDrawColor(206, 183, 153);
+  doc.roundedRect(14, 30, 182, 22, 3, 3, 'FD');
+
+  doc.setTextColor(30, 26, 22);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('FINANCIEEL OVERZICHT', 20, 38);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text(`Totaal Consumpties: ${state.totalTallies} streepjes (1 streep = € 1,00)`, 20, 46);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(163, 34, 34);
+  doc.setFontSize(14);
+  doc.text(`TOTAAL TE ONTVANGEN: € ${state.totalTallies},00`, 110, 42);
+
+  // Table rows
+  const sorted = [...state.members].sort((a, b) => a.name.localeCompare(b.name));
+  const tableData = sorted.map((m, idx) => [
+    idx + 1,
+    m.name,
+    m.tallies || 0,
+    `€ ${(m.tallies || 0).toFixed(2).replace('.', ',')}`,
+    '[  ] Betaald'
+  ]);
+
+  doc.autoTable({
+    startY: 57,
+    head: [['Nr.', 'Naam Leiding', 'Aantal Strepen', 'Te Betalen', 'Handtekening / Betaald']],
+    body: tableData,
+    theme: 'striped',
+    headStyles: {
+      fillColor: [163, 34, 34],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 10
+    },
+    bodyStyles: {
+      fontSize: 9,
+      textColor: [30, 26, 22]
+    },
+    columnStyles: {
+      0: { cellWidth: 12, halign: 'center' },
+      1: { cellWidth: 50, fontStyle: 'bold' },
+      2: { cellWidth: 35, halign: 'center' },
+      3: { cellWidth: 35, halign: 'right' },
+      4: { cellWidth: 50, halign: 'center' }
+    },
+    foot: [[
+      '',
+      'TOTAAL BORD',
+      String(state.totalTallies),
+      `€ ${state.totalTallies},00`,
+      ''
+    ]],
+    footStyles: {
+      fillColor: [244, 232, 213],
+      textColor: [163, 34, 34],
+      fontStyle: 'bold',
+      fontSize: 10
+    }
+  });
+
+  const finalY = doc.lastAutoTable.finalY || 240;
+  doc.setTextColor(100, 80, 60);
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'italic');
+  doc.text('Gelieve het openstaande bedrag over te schrijven naar de KSA rekening of via Payconiq.', 14, Math.min(285, finalY + 10));
+
+  const filename = `KSA_Streepkarton_Afrekening_${new Date().toISOString().slice(0, 10)}.pdf`;
+  doc.save(filename);
+  showToast('PDF Verrekening gedownload! 📄', '📄');
+}
+
+// Admin Action Handlers
+window.app = {
+  selectDrinkItem: (id) => {
+    selectedDrinkId = id;
+    openDrinkPicker(targetMemberForDrink);
+  },
+
+  onSelectUserChoice: (memberId) => {
+    closeSelectUserModal();
+    const member = state.members.find(m => m.id === memberId);
+    if (!member) return;
+
+    if (!member.hasPin) {
+      openSetupPinModal(memberId);
+    } else {
+      openPinModal({
+        type: 'setActiveUser',
+        memberId: member.id,
+        memberName: member.name
+      });
+    }
+  },
+
+  quickAddOne: (memberId) => {
+    const member = state.members.find(m => m.id === memberId);
+    if (!member) return;
+
+    // ADMIN OVERRIDE: Tally without PIN!
+    if (adminPassword) {
+      window.app.adminTally(memberId, 1);
+      return;
+    }
+
+    if (!member.hasPin) {
+      openSetupPinModal(memberId);
+      return;
+    }
+
+    if (activeUser && activeUser.id === memberId && activeUser.pin) {
+      directTally(memberId, 1, 'pintje', activeUser.pin, member.name);
+    } else {
+      openPinModal({
+        type: 'tally',
+        memberId: member.id,
+        memberName: member.name,
+        count: 1,
+        drinkId: 'pintje',
+        drinkName: 'pint'
+      });
+    }
+  },
+
+  onMemberNameTap: (memberId) => {
+    if (adminPassword) {
+      window.app.adminTally(memberId, 1);
+      return;
+    }
+    const member = state.members.find(m => m.id === memberId);
+    if (!member) return;
+    if (!member.hasPin) {
+      openSetupPinModal(memberId);
+      return;
+    }
+    openDrinkPicker(memberId);
+  },
+
+  onMemberRowTap: (memberId) => {
+    window.app.quickAddOne(memberId);
+  },
+
+  // Admin specific methods
+  adminTally: async (memberId, count) => {
+    if (!adminPassword) return;
+    try {
+      const res = await fetch('/api/admin/tally', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: adminPassword, memberId, count, drinkId: 'pintje' })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Admin fout', '❌');
+        return;
+      }
+      playMarkerSound(count);
+      triggerHaptic('heavy');
+      showToast(`${count > 0 ? '+' + count : count} streep voor lid (Admin)`, '🔑');
+    } catch (e) {
+      showToast('Fout bij strepen toevoegen', '❌');
+    }
+  },
+
+  adminSetTalliesPrompt: async (memberId, currentVal) => {
+    const input = prompt(`Voer het exacte aantal streepjes in voor dit lid:`, currentVal);
+    if (input === null) return;
+    const count = parseInt(input, 10);
+    if (isNaN(count) || count < 0) {
+      alert('Voer een geldig getal in');
+      return;
+    }
+    try {
+      const res = await fetch('/api/admin/set-member-tallies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: adminPassword, memberId, tallies: count })
+      });
+      if (res.ok) {
+        showToast('Strepen aangepast!', '✏️');
+      }
+    } catch (e) {
+      alert('Fout bij aanpassen');
+    }
+  },
+
+  adminResetPin: async (memberId) => {
+    if (!confirm('Weet je zeker dat je de pincode van dit lid wil resetten? Het lid kan dan zelf een nieuwe code kiezen.')) return;
+    try {
+      const res = await fetch('/api/admin/reset-member-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: adminPassword, memberId })
+      });
+      if (res.ok) {
+        showToast('Pincode gereset!', '🔑');
+      }
+    } catch (e) {
+      alert('Fout bij resetten');
+    }
+  },
+
+  adminRemoveMember: async (memberId, name) => {
+    if (!confirm(`Weet je zeker dat je '${name}' van het karton wil verwijderen?`)) return;
+    try {
+      const res = await fetch(`/api/member/${memberId}`, { method: 'DELETE' });
+      if (res.ok) {
+        showToast(`${name} verwijderd`, '🗑️');
+      }
+    } catch (e) {
+      alert('Fout bij verwijderen');
+    }
+  }
+};
+
+// Modals
 function openSelectUserModal() {
   const list = document.getElementById('selectUserList');
   let html = '';
   const sorted = [...state.members].sort((a, b) => a.name.localeCompare(b.name));
-
   sorted.forEach(m => {
     html += `
       <button class="keypad-btn" style="padding: 10px 6px; font-size: 15px; font-weight: 700;" onclick="window.app.onSelectUserChoice('${m.id}')">
@@ -371,7 +654,6 @@ function closeSelectUserModal() {
   document.getElementById('selectUserModal').classList.remove('open');
 }
 
-// PIN Keypad Management
 function openPinModal(action) {
   currentPendingAction = action;
   currentPinInput = '';
@@ -421,7 +703,6 @@ async function submitPinAction(pin) {
   const action = currentPendingAction;
 
   if (action.type === 'setActiveUser') {
-    // Verify PIN before saving as active user
     try {
       const res = await fetch('/api/verify-pin', {
         method: 'POST',
@@ -444,7 +725,6 @@ async function submitPinAction(pin) {
     return;
   }
 
-  // Tally action (for self or friend proxy)
   try {
     const res = await fetch('/api/tally', {
       method: 'POST',
@@ -461,7 +741,6 @@ async function submitPinAction(pin) {
       handlePinError(data.error || 'Foutieve pincode');
       return;
     }
-
     playMarkerSound(action.count || 1);
     triggerHaptic('heavy');
     showToast(`+${action.count || 1} streep voor ${action.memberName}!`, '✍️');
@@ -477,7 +756,6 @@ function handlePinError(message) {
   const sheet = document.getElementById('pinSheet');
   sheet.classList.add('shake');
   setTimeout(() => sheet.classList.remove('shake'), 400);
-
   currentPinInput = '';
   updatePinDots();
   showToast(message, '❌');
@@ -566,71 +844,6 @@ function closeDrinkModal() {
   targetMemberForDrink = null;
 }
 
-// Core App Action Handlers
-window.app = {
-  selectDrinkItem: (id) => {
-    selectedDrinkId = id;
-    openDrinkPicker(targetMemberForDrink);
-  },
-
-  onSelectUserChoice: (memberId) => {
-    closeSelectUserModal();
-    const member = state.members.find(m => m.id === memberId);
-    if (!member) return;
-
-    if (!member.hasPin) {
-      openSetupPinModal(memberId);
-    } else {
-      openPinModal({
-        type: 'setActiveUser',
-        memberId: member.id,
-        memberName: member.name
-      });
-    }
-  },
-
-  quickAddOne: (memberId) => {
-    const member = state.members.find(m => m.id === memberId);
-    if (!member) return;
-
-    if (!member.hasPin) {
-      openSetupPinModal(memberId);
-      return;
-    }
-
-    // Fast 1-tap if active user matches
-    if (activeUser && activeUser.id === memberId && activeUser.pin) {
-      directTally(memberId, 1, 'pintje', activeUser.pin, member.name);
-    } else {
-      // Proxy tally for friend
-      openPinModal({
-        type: 'tally',
-        memberId: member.id,
-        memberName: member.name,
-        count: 1,
-        drinkId: 'pintje',
-        drinkName: 'pint'
-      });
-    }
-  },
-
-  onMemberNameTap: (memberId) => {
-    const member = state.members.find(m => m.id === memberId);
-    if (!member) return;
-    if (!member.hasPin) {
-      openSetupPinModal(memberId);
-      return;
-    }
-    // Open drink picker for this member
-    openDrinkPicker(memberId);
-  },
-
-  onMemberRowTap: (memberId) => {
-    window.app.quickAddOne(memberId);
-  }
-};
-
-// Fast Direct Tally (Bypasses modal when active user is logged in)
 async function directTally(memberId, count, drinkId, pin, memberName) {
   try {
     const res = await fetch('/api/tally', {
@@ -659,11 +872,9 @@ function setupWebSocket() {
 
   try {
     ws = new WebSocket(wsUrl);
-
     ws.onopen = () => {
       document.getElementById('statusDot').classList.remove('offline');
     };
-
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
@@ -672,19 +883,18 @@ function setupWebSocket() {
           renderMembers();
           renderStats();
           renderSettle();
+          renderAdminMemberList();
         }
         if (msg.type === 'TALLY_ADDED') {
           playMarkerSound(msg.count);
         }
       } catch (e) {}
     };
-
     ws.onclose = () => {
       document.getElementById('statusDot').classList.add('offline');
       clearTimeout(reconnectTimer);
       reconnectTimer = setTimeout(setupWebSocket, 2000);
     };
-
     ws.onerror = () => ws.close();
   } catch (e) {
     setTimeout(setupWebSocket, 3000);
@@ -694,6 +904,7 @@ function setupWebSocket() {
 // Initial Loading
 async function initApp() {
   activeUser = loadStoredUser();
+  adminPassword = sessionStorage.getItem('ksa_admin_password') || null;
 
   try {
     const res = await fetch('/api/state');
@@ -702,9 +913,9 @@ async function initApp() {
       renderMembers();
       renderStats();
       renderSettle();
+      renderAdminMemberList();
 
-      // If user hasn't selected who they are, prompt them cleanly
-      if (!activeUser) {
+      if (!activeUser && !adminPassword) {
         setTimeout(openSelectUserModal, 500);
       }
     }
@@ -733,14 +944,11 @@ async function loadNetworkInfo() {
 document.addEventListener('DOMContentLoaded', () => {
   initApp();
 
-  // Search filter
   document.getElementById('searchInput').addEventListener('input', renderMembers);
-
-  // Switch user
   document.getElementById('btnSwitchUser').addEventListener('click', openSelectUserModal);
   document.getElementById('btnCloseSelectUser').addEventListener('click', closeSelectUserModal);
 
-  // My Quick Action Buttons (At the top of screen for 1-tap tallying!)
+  // Quick Action Buttons
   document.getElementById('btnMyQuickBeer').addEventListener('click', () => {
     if (activeUser) {
       directTally(activeUser.id, 1, 'pintje', activeUser.pin, activeUser.name);
@@ -772,6 +980,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const drId = selectedDrinkId;
     closeDrinkModal();
 
+    if (adminPassword) {
+      window.app.adminTally(memId, 1);
+      return;
+    }
+
     if (activeUser && activeUser.id === memId && activeUser.pin) {
       directTally(memId, 1, drId, activeUser.pin, activeUser.name);
     } else {
@@ -792,6 +1005,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const drId = selectedDrinkId;
     closeDrinkModal();
 
+    if (adminPassword) {
+      window.app.adminTally(memId, 5);
+      return;
+    }
+
     if (activeUser && activeUser.id === memId && activeUser.pin) {
       directTally(memId, 5, drId, activeUser.pin, activeUser.name);
     } else {
@@ -810,21 +1028,153 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.nav-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       triggerHaptic('light');
+      const targetId = btn.getAttribute('data-tab');
+
+      // Admin tab requires password if not already unlocked
+      if (targetId === 'tabAdmin' && !adminPassword) {
+        document.getElementById('adminLoginModal').classList.add('open');
+        return;
+      }
+
       document.querySelectorAll('.nav-tab-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
 
-      const targetId = btn.getAttribute('data-tab');
-      ['tabKarton', 'tabStats', 'tabSettle', 'tabConnect'].forEach(id => {
+      ['tabKarton', 'tabStats', 'tabSettle', 'tabAdmin', 'tabConnect'].forEach(id => {
         document.getElementById(id).style.display = id === targetId ? 'block' : 'none';
       });
 
       if (targetId === 'tabStats') renderStats();
       if (targetId === 'tabSettle') renderSettle();
+      if (targetId === 'tabAdmin') renderAdminMemberList();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   });
 
-  // Numeric Keypad Buttons
+  // Admin button on header
+  document.getElementById('btnHeaderAdmin').addEventListener('click', () => {
+    if (adminPassword) {
+      document.getElementById('navBtnAdmin').click();
+    } else {
+      document.getElementById('adminLoginModal').classList.add('open');
+    }
+  });
+
+  // Admin Login Modal
+  document.getElementById('btnCloseAdminLogin').addEventListener('click', () => {
+    document.getElementById('adminLoginModal').classList.remove('open');
+  });
+
+  document.getElementById('btnSubmitAdminLogin').addEventListener('click', async () => {
+    const pwd = document.getElementById('inputAdminPassword').value.trim();
+    if (!pwd) return;
+
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd })
+      });
+      if (res.ok) {
+        adminPassword = pwd;
+        sessionStorage.setItem('ksa_admin_password', pwd);
+        document.getElementById('adminLoginModal').classList.remove('open');
+        showToast('Admin ingelogd! 🔑', '🔑');
+        updateAdminBar();
+        document.getElementById('navBtnAdmin').click();
+      } else {
+        alert('Verkeerd admin wachtwoord!');
+      }
+    } catch (e) {
+      alert('Verbindingsfout');
+    }
+  });
+
+  // Exit Admin Mode
+  document.getElementById('btnExitAdmin').addEventListener('click', () => {
+    adminPassword = null;
+    sessionStorage.removeItem('ksa_admin_password');
+    updateAdminBar();
+    showToast('Admin afgesloten', '🔒');
+    document.querySelector('.nav-tab-btn[data-tab="tabKarton"]').click();
+  });
+
+  // Admin: Wipe All Tallies
+  document.getElementById('btnAdminClearAll').addEventListener('click', async () => {
+    const confirmation = prompt('Typ "WIS ALLES" om te bevestigen dat je alle strepen van iedereen naar 0 wil resetten:');
+    if (confirmation !== 'WIS ALLES') {
+      alert('Geannuleerd');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/admin/clear-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: adminPassword })
+      });
+      if (res.ok) {
+        showToast('Alle streepjes gewist naar 0! 🗑️', '🗑️');
+      }
+    } catch (e) {
+      alert('Fout bij wissen');
+    }
+  });
+
+  // Admin: Add Member
+  document.getElementById('btnAddMemberSubmit').addEventListener('click', async () => {
+    const name = document.getElementById('inputNewMemberName').value.trim();
+    if (!name) return;
+
+    try {
+      const res = await fetch('/api/member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Fout');
+        return;
+      }
+      document.getElementById('inputNewMemberName').value = '';
+      showToast(`${name} toegevoegd!`, '➕');
+    } catch (e) {
+      alert('Fout bij toevoegen');
+    }
+  });
+
+  // Admin: Change Password
+  document.getElementById('btnChangeAdminPwd').addEventListener('click', async () => {
+    const newPwd = document.getElementById('inputNewAdminPwd').value.trim();
+    if (!newPwd || newPwd.length < 3) {
+      alert('Minimaal 3 tekens');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/admin/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword: adminPassword, newPassword: newPwd })
+      });
+      if (res.ok) {
+        adminPassword = newPwd;
+        sessionStorage.setItem('ksa_admin_password', newPwd);
+        document.getElementById('inputNewAdminPwd').value = '';
+        showToast('Admin wachtwoord gewijzigd!', '🔑');
+      } else {
+        alert('Fout bij wijzigen');
+      }
+    } catch (e) {
+      alert('Verbindingsfout');
+    }
+  });
+
+  // PDF Downloads (both from settle tab and admin tab)
+  document.getElementById('btnDownloadPdf').addEventListener('click', generatePdfReport);
+  document.getElementById('btnAdminDownloadPdf').addEventListener('click', generatePdfReport);
+
+  // Numeric Keypad
   document.querySelectorAll('.keypad-btn[data-num]').forEach(btn => {
     btn.addEventListener('click', () => handleKeypadTap(btn.getAttribute('data-num')));
   });
