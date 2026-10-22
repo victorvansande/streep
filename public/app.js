@@ -1,4 +1,6 @@
-// KSA Streepkarton - Sleek & Ultra-Fast Mobile Client with Admin, PDF & GitHub Pages Cloud Sync
+// KSA Streepkarton - Live Cloud Sync via ntfy.sh (werkt direct op GitHub Pages!)
+
+const CLOUD_CHANNEL = 'ksa_streep_2026_victorvansande';
 
 const DEFAULT_MEMBERS = [
   { id: 'm_daan', name: 'Daan', hasPin: false, tallies: 0, drinks: {} },
@@ -39,7 +41,7 @@ const DEFAULT_DRINKS = [
 ];
 
 let state = {
-  members: DEFAULT_MEMBERS,
+  members: JSON.parse(JSON.stringify(DEFAULT_MEMBERS)),
   drinks: DEFAULT_DRINKS,
   totalTallies: 0,
   totalEuros: 0,
@@ -47,29 +49,16 @@ let state = {
   title: 'Karton Najaar 2026'
 };
 
+const processedEventIds = new Set();
 let activeUser = null; // { id, name, pin }
 let adminPassword = null;
 let currentPendingAction = null;
 let currentPinInput = '';
 let selectedDrinkId = 'pintje';
 let targetMemberForDrink = null;
-let ws = null;
-let reconnectTimer = null;
-const broadcastChannel = window.BroadcastChannel ? new BroadcastChannel('ksa_streep_channel') : null;
+let sseConnection = null;
 
-// Determine backend API URL
-function getApiBaseUrl() {
-  const custom = localStorage.getItem('ksa_backend_url');
-  if (custom && custom.trim()) {
-    return custom.trim().replace(/\/$/, '');
-  }
-  if (window.location.hostname.includes('github.io')) {
-    return ''; // Static GitHub pages mode if no backend configured
-  }
-  return ''; // Relative to current server
-}
-
-// Audio context for haptic sound
+// Audio context
 let audioCtx = null;
 function initAudio() {
   if (!audioCtx) {
@@ -83,7 +72,6 @@ function playMarkerSound(count = 1) {
     initAudio();
     if (!audioCtx) return;
     if (audioCtx.state === 'suspended') audioCtx.resume();
-
     const now = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
@@ -92,18 +80,15 @@ function playMarkerSound(count = 1) {
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(140, now);
     osc.frequency.exponentialRampToValueAtTime(70, now + 0.1);
-
     filter.type = 'bandpass';
     filter.frequency.setValueAtTime(450, now);
     filter.Q.setValueAtTime(2, now);
-
     gain.gain.setValueAtTime(0.2, now);
     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
 
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(audioCtx.destination);
-
     osc.start(now);
     osc.stop(now + 0.11);
   } catch (e) {}
@@ -116,14 +101,11 @@ function playSuccessChime() {
     const now = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-
     osc.type = 'sine';
     osc.frequency.setValueAtTime(523, now);
     osc.frequency.exponentialRampToValueAtTime(784, now + 0.15);
-
     gain.gain.setValueAtTime(0.15, now);
     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-
     osc.connect(gain);
     gain.connect(audioCtx.destination);
     osc.start(now);
@@ -138,14 +120,11 @@ function playErrorTone() {
     const now = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-
     osc.type = 'sawtooth';
     osc.frequency.setValueAtTime(180, now);
     osc.frequency.linearRampToValueAtTime(110, now + 0.2);
-
     gain.gain.setValueAtTime(0.2, now);
     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-
     osc.connect(gain);
     gain.connect(audioCtx.destination);
     osc.start(now);
@@ -184,7 +163,6 @@ function deleteCookie(name) {
   } catch (e) {}
 }
 
-// Session Persistence across Browser & Cookies
 function loadStoredUser() {
   try {
     const rawLocal = localStorage.getItem('ksa_streep_active_user');
@@ -208,7 +186,7 @@ function saveStoredUser(userObj) {
   try {
     const str = JSON.stringify(userObj);
     localStorage.setItem('ksa_streep_active_user', str);
-    setCookie('ksa_user_session', str, 3650); // 10 years permanent cookie
+    setCookie('ksa_user_session', str, 3650); // 10 years permanent cookie!
     activeUser = userObj;
     updateMyQuickBanner();
   } catch (e) {}
@@ -251,33 +229,194 @@ function updateAdminBar() {
   bar.style.display = adminPassword ? 'flex' : 'none';
 }
 
-// Local Storage Fallback State (for GitHub Pages without server)
-function loadLocalStateFallback() {
-  try {
-    const raw = localStorage.getItem('ksa_streep_local_state');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.members && parsed.members.length > 0) {
-        return parsed;
-      }
-    }
-  } catch (e) {}
-  return null;
-}
-
-function saveLocalStateFallback(s) {
-  try {
-    localStorage.setItem('ksa_streep_local_state', JSON.stringify(s));
-    if (broadcastChannel) {
-      broadcastChannel.postMessage({ type: 'LOCAL_STATE_UPDATE', state: s });
-    }
-  } catch (e) {}
-}
-
-// Recalculate totals
 function recalculateState() {
   state.totalTallies = state.members.reduce((sum, m) => sum + (m.tallies || 0), 0);
   state.totalEuros = state.totalTallies * (state.pricePerTally || 1.0);
+}
+
+// Save local copy of entire state
+function saveLocalState() {
+  try {
+    localStorage.setItem('ksa_streep_karton_cache', JSON.stringify(state));
+  } catch (e) {}
+}
+
+function loadLocalState() {
+  try {
+    const raw = localStorage.getItem('ksa_streep_karton_cache');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.members && parsed.members.length > 0) {
+        state = parsed;
+      }
+    }
+  } catch (e) {}
+}
+
+// Apply a cloud event to state
+function applySyncEvent(ev, isLocalOrigin = false) {
+  if (!ev || !ev.eventId) return false;
+  if (processedEventIds.has(ev.eventId)) return false;
+  processedEventIds.add(ev.eventId);
+
+  let stateChanged = false;
+
+  switch (ev.type) {
+    case 'tally': {
+      const member = state.members.find(m => m.id === ev.memberId);
+      if (member) {
+        const count = ev.count || 1;
+        member.tallies = Math.max(0, (member.tallies || 0) + count);
+        if (!member.drinks) member.drinks = {};
+        const drinkId = ev.drinkId || 'pintje';
+        member.drinks[drinkId] = Math.max(0, (member.drinks[drinkId] || 0) + count);
+        stateChanged = true;
+        if (!isLocalOrigin) playMarkerSound(count);
+      }
+      break;
+    }
+    case 'set_pin': {
+      const member = state.members.find(m => m.id === ev.memberId);
+      if (member) {
+        member.hasPin = true;
+        member.pinHash = ev.pinHash;
+        stateChanged = true;
+      }
+      break;
+    }
+    case 'reset_pin': {
+      const member = state.members.find(m => m.id === ev.memberId);
+      if (member) {
+        member.hasPin = false;
+        member.pinHash = '';
+        stateChanged = true;
+      }
+      break;
+    }
+    case 'set_tallies': {
+      const member = state.members.find(m => m.id === ev.memberId);
+      if (member) {
+        member.tallies = Math.max(0, ev.tallies);
+        stateChanged = true;
+      }
+      break;
+    }
+    case 'add_member': {
+      if (!state.members.some(m => m.id === ev.member.id)) {
+        state.members.push(ev.member);
+        stateChanged = true;
+      }
+      break;
+    }
+    case 'remove_member': {
+      state.members = state.members.filter(m => m.id !== ev.memberId);
+      stateChanged = true;
+      break;
+    }
+    case 'clear_all': {
+      state.members.forEach(m => {
+        m.tallies = 0;
+        m.drinks = {};
+      });
+      stateChanged = true;
+      break;
+    }
+    case 'new_karton': {
+      state.title = ev.title || state.title;
+      state.members.forEach(m => {
+        m.tallies = 0;
+        m.drinks = {};
+      });
+      stateChanged = true;
+      break;
+    }
+  }
+
+  if (stateChanged) {
+    recalculateState();
+    saveLocalState();
+    renderMembers();
+    renderStats();
+    renderSettle();
+    renderAdminMemberList();
+  }
+  return stateChanged;
+}
+
+// Publish an event to ntfy.sh cloud bus
+async function publishCloudEvent(ev) {
+  ev.eventId = ev.eventId || ('ev_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
+  ev.timestamp = Date.now();
+
+  // Apply immediately locally
+  applySyncEvent(ev, true);
+
+  // Publish to ntfy.sh
+  try {
+    await fetch(`https://ntfy.sh/${encodeURIComponent(CLOUD_CHANNEL)}`, {
+      method: 'POST',
+      body: JSON.stringify(ev),
+      headers: { 'Title': 'KSA Streep' }
+    });
+  } catch (e) {
+    console.warn('Kon event niet naar ntfy sturen:', e);
+  }
+}
+
+// Connect to live SSE stream on ntfy.sh
+function connectCloudSync() {
+  if (sseConnection) return;
+  const sseUrl = `https://ntfy.sh/${encodeURIComponent(CLOUD_CHANNEL)}/sse`;
+
+  try {
+    sseConnection = new EventSource(sseUrl);
+
+    sseConnection.onopen = () => {
+      document.getElementById('statusDot').classList.remove('offline');
+      document.getElementById('cloudSyncBanner').style.display = 'flex';
+    };
+
+    sseConnection.onmessage = (e) => {
+      try {
+        const envelope = JSON.parse(e.data);
+        if (envelope.event === 'message' && envelope.message) {
+          const payload = JSON.parse(envelope.message);
+          applySyncEvent(payload, false);
+        }
+      } catch (err) {}
+    };
+
+    sseConnection.onerror = () => {
+      document.getElementById('statusDot').classList.add('offline');
+      if (sseConnection) {
+        sseConnection.close();
+        sseConnection = null;
+      }
+      setTimeout(connectCloudSync, 4000);
+    };
+  } catch (e) {
+    setTimeout(connectCloudSync, 5000);
+  }
+}
+
+// Fetch historical events from ntfy.sh cache
+async function fetchCloudHistory() {
+  try {
+    const res = await fetch(`https://ntfy.sh/${encodeURIComponent(CLOUD_CHANNEL)}/json?poll=1&since=30d`);
+    if (!res.ok) return;
+    const text = await res.text();
+    const lines = text.split('\n').filter(l => l.trim().length > 0);
+
+    lines.forEach(line => {
+      try {
+        const envelope = JSON.parse(line);
+        if (envelope.message) {
+          const ev = JSON.parse(envelope.message);
+          applySyncEvent(ev, false);
+        }
+      } catch (e) {}
+    });
+  } catch (e) {}
 }
 
 // Compact Turven SVG Generator
@@ -513,10 +652,8 @@ function generatePdfReport() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-  // Header banner
   doc.setFillColor(163, 34, 34);
   doc.rect(0, 0, 210, 24, 'F');
-
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(16);
@@ -526,7 +663,6 @@ function generatePdfReport() {
   doc.setFont('helvetica', 'normal');
   doc.text(`Periode: ${state.title || 'Streepkarton'} | Datum opmaak: ${new Date().toLocaleDateString('nl-BE')} om ${new Date().toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}`, 14, 21);
 
-  // Summary box
   doc.setFillColor(250, 243, 232);
   doc.setDrawColor(206, 183, 153);
   doc.roundedRect(14, 30, 182, 22, 3, 3, 'FD');
@@ -545,7 +681,6 @@ function generatePdfReport() {
   doc.setFontSize(14);
   doc.text(`TOTAAL TE ONTVANGEN: € ${state.totalTallies},00`, 110, 42);
 
-  // Table rows
   const sorted = [...state.members].sort((a, b) => a.name.localeCompare(b.name));
   const tableData = sorted.map((m, idx) => [
     idx + 1,
@@ -566,10 +701,7 @@ function generatePdfReport() {
       fontStyle: 'bold',
       fontSize: 10
     },
-    bodyStyles: {
-      fontSize: 9,
-      textColor: [30, 26, 22]
-    },
+    bodyStyles: { fontSize: 9, textColor: [30, 26, 22] },
     columnStyles: {
       0: { cellWidth: 12, halign: 'center' },
       1: { cellWidth: 50, fontStyle: 'bold' },
@@ -577,13 +709,7 @@ function generatePdfReport() {
       3: { cellWidth: 35, halign: 'right' },
       4: { cellWidth: 50, halign: 'center' }
     },
-    foot: [[
-      '',
-      'TOTAAL BORD',
-      String(state.totalTallies),
-      `€ ${state.totalTallies},00`,
-      ''
-    ]],
+    foot: [['', 'TOTAAL BORD', String(state.totalTallies), `€ ${state.totalTallies},00`, '']],
     footStyles: {
       fillColor: [244, 232, 213],
       textColor: [163, 34, 34],
@@ -635,23 +761,26 @@ window.app = {
       return;
     }
 
+    // 1-TAP FAST TALLY FOR OWN LOGGED IN PHONE (NO PIN ASKED EVER!)
+    if (activeUser && activeUser.id === memberId) {
+      directTally(memberId, 1, 'pintje', member.name);
+      return;
+    }
+
     if (!member.hasPin) {
       openSetupPinModal(memberId);
       return;
     }
 
-    if (activeUser && activeUser.id === memberId && activeUser.pin) {
-      directTally(memberId, 1, 'pintje', activeUser.pin, member.name);
-    } else {
-      openPinModal({
-        type: 'tally',
-        memberId: member.id,
-        memberName: member.name,
-        count: 1,
-        drinkId: 'pintje',
-        drinkName: 'pint'
-      });
-    }
+    // Proxy tally for a friend
+    openPinModal({
+      type: 'tally',
+      memberId: member.id,
+      memberName: member.name,
+      count: 1,
+      drinkId: 'pintje',
+      drinkName: 'pint'
+    });
   },
 
   onMemberNameTap: (memberId) => {
@@ -674,41 +803,15 @@ window.app = {
 
   adminTally: async (memberId, count) => {
     if (!adminPassword) return;
-    const apiBase = getApiBaseUrl();
-
-    // If running in local standalone mode without backend server:
-    if (!apiBase && window.location.hostname.includes('github.io')) {
-      const member = state.members.find(m => m.id === memberId);
-      if (member) {
-        member.tallies = Math.max(0, (member.tallies || 0) + count);
-        recalculateState();
-        saveLocalStateFallback(state);
-        renderMembers();
-        renderAdminMemberList();
-        playMarkerSound(count);
-        triggerHaptic('heavy');
-        showToast(`${count > 0 ? '+' + count : count} streep voor ${member.name} (Admin)`, '🔑');
-      }
-      return;
-    }
-
-    try {
-      const res = await fetch(`${apiBase}/api/admin/tally`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: adminPassword, memberId, count, drinkId: 'pintje' })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Admin fout', '❌');
-        return;
-      }
-      playMarkerSound(count);
-      triggerHaptic('heavy');
-      showToast(`${count > 0 ? '+' + count : count} streep voor lid (Admin)`, '🔑');
-    } catch (e) {
-      showToast('Fout bij strepen toevoegen', '❌');
-    }
+    publishCloudEvent({
+      type: 'tally',
+      memberId,
+      count,
+      drinkId: 'pintje'
+    });
+    playMarkerSound(count);
+    triggerHaptic('heavy');
+    showToast(`${count > 0 ? '+' + count : count} streep voor lid (Admin)`, '🔑');
   },
 
   adminSetTalliesPrompt: async (memberId, currentVal) => {
@@ -717,80 +820,30 @@ window.app = {
     const count = parseInt(input, 10);
     if (isNaN(count) || count < 0) return;
 
-    const apiBase = getApiBaseUrl();
-    if (!apiBase && window.location.hostname.includes('github.io')) {
-      const member = state.members.find(m => m.id === memberId);
-      if (member) {
-        member.tallies = count;
-        recalculateState();
-        saveLocalStateFallback(state);
-        renderMembers();
-        renderAdminMemberList();
-        showToast('Strepen aangepast!', '✏️');
-      }
-      return;
-    }
-
-    try {
-      const res = await fetch(`${apiBase}/api/admin/set-member-tallies`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: adminPassword, memberId, tallies: count })
-      });
-      if (res.ok) showToast('Strepen aangepast!', '✏️');
-    } catch (e) {
-      alert('Fout bij aanpassen');
-    }
+    publishCloudEvent({
+      type: 'set_tallies',
+      memberId,
+      tallies: count
+    });
+    showToast('Strepen aangepast!', '✏️');
   },
 
   adminResetPin: async (memberId) => {
     if (!confirm('Pincode van dit lid resetten?')) return;
-    const apiBase = getApiBaseUrl();
-
-    if (!apiBase && window.location.hostname.includes('github.io')) {
-      const member = state.members.find(m => m.id === memberId);
-      if (member) {
-        member.hasPin = false;
-        saveLocalStateFallback(state);
-        renderMembers();
-        renderAdminMemberList();
-        showToast('Pincode gereset!', '🔑');
-      }
-      return;
-    }
-
-    try {
-      const res = await fetch(`${apiBase}/api/admin/reset-member-pin`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: adminPassword, memberId })
-      });
-      if (res.ok) showToast('Pincode gereset!', '🔑');
-    } catch (e) {
-      alert('Fout bij resetten');
-    }
+    publishCloudEvent({
+      type: 'reset_pin',
+      memberId
+    });
+    showToast('Pincode gereset!', '🔑');
   },
 
   adminRemoveMember: async (memberId, name) => {
     if (!confirm(`'${name}' verwijderen?`)) return;
-    const apiBase = getApiBaseUrl();
-
-    if (!apiBase && window.location.hostname.includes('github.io')) {
-      state.members = state.members.filter(m => m.id !== memberId);
-      recalculateState();
-      saveLocalStateFallback(state);
-      renderMembers();
-      renderAdminMemberList();
-      showToast(`${name} verwijderd`, '🗑️');
-      return;
-    }
-
-    try {
-      const res = await fetch(`${apiBase}/api/member/${memberId}`, { method: 'DELETE' });
-      if (res.ok) showToast(`${name} verwijderd`, '🗑️');
-    } catch (e) {
-      alert('Fout bij verwijderen');
-    }
+    publishCloudEvent({
+      type: 'remove_member',
+      memberId
+    });
+    showToast(`${name} verwijderd`, '🗑️');
   }
 };
 
@@ -861,78 +914,29 @@ function handleKeypadTap(num) {
 async function submitPinAction(pin) {
   if (!currentPendingAction) return;
   const action = currentPendingAction;
-  const apiBase = getApiBaseUrl();
-
-  // If on static GitHub pages without backend server:
-  if (!apiBase && window.location.hostname.includes('github.io')) {
-    if (action.type === 'setActiveUser') {
-      saveStoredUser({ id: action.memberId, name: action.memberName, pin });
-      playSuccessChime();
-      showToast(`Ingelogd als ${action.memberName}!`, '👋');
-      closePinModal();
-      renderMembers();
-      return;
-    }
-    const member = state.members.find(m => m.id === action.memberId);
-    if (member) {
-      member.tallies = (member.tallies || 0) + (action.count || 1);
-      recalculateState();
-      saveLocalStateFallback(state);
-      playMarkerSound(action.count || 1);
-      triggerHaptic('heavy');
-      showToast(`+${action.count || 1} streep voor ${action.memberName}!`, '✍️');
-      closePinModal();
-      renderMembers();
-    }
-    return;
-  }
 
   if (action.type === 'setActiveUser') {
-    try {
-      const res = await fetch(`${apiBase}/api/verify-pin`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memberId: action.memberId, pin })
-      });
-      const data = await res.json();
-      if (!data.valid) {
-        handlePinError('Foutieve pincode');
-        return;
-      }
-      saveStoredUser({ id: action.memberId, name: action.memberName, pin });
-      playSuccessChime();
-      showToast(`Ingelogd als ${action.memberName}!`, '👋');
-      closePinModal();
-      renderMembers();
-    } catch (e) {
-      handlePinError('Verbindingsfout');
-    }
+    // Save permanently in cookie + local storage
+    saveStoredUser({ id: action.memberId, name: action.memberName, pin });
+    playSuccessChime();
+    showToast(`Ingelogd als ${action.memberName}!`, '👋');
+    closePinModal();
+    renderMembers();
     return;
   }
 
-  try {
-    const res = await fetch(`${apiBase}/api/tally`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        memberId: action.memberId,
-        count: action.count || 1,
-        drinkId: action.drinkId || 'pintje',
-        pin
-      })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      handlePinError(data.error || 'Foutieve pincode');
-      return;
-    }
-    playMarkerSound(action.count || 1);
-    triggerHaptic('heavy');
-    showToast(`+${action.count || 1} streep voor ${action.memberName}!`, '✍️');
-    closePinModal();
-  } catch (e) {
-    handlePinError('Verbindingsfout');
-  }
+  // Tally event
+  publishCloudEvent({
+    type: 'tally',
+    memberId: action.memberId,
+    count: action.count || 1,
+    drinkId: action.drinkId || 'pintje'
+  });
+
+  playMarkerSound(action.count || 1);
+  triggerHaptic('heavy');
+  showToast(`+${action.count || 1} streep voor ${action.memberName}!`, '✍️');
+  closePinModal();
 }
 
 function handlePinError(message) {
@@ -975,44 +979,22 @@ async function submitNewPin() {
     return;
   }
 
-  const apiBase = getApiBaseUrl();
-  if (!apiBase && window.location.hostname.includes('github.io')) {
-    const member = state.members.find(m => m.id === pendingSetupMemberId);
-    if (member) {
-      member.hasPin = true;
-      saveStoredUser({ id: member.id, name: member.name, pin: pin1 });
-      saveLocalStateFallback(state);
-    }
-    playSuccessChime();
-    showToast('Pincode ingesteld!', '🔒');
-    closeSetupPinModal();
-    renderMembers();
-    return;
-  }
-
-  try {
-    const res = await fetch(`${apiBase}/api/set-pin`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ memberId: pendingSetupMemberId, pin: pin1 })
+  const member = state.members.find(m => m.id === pendingSetupMemberId);
+  if (member) {
+    publishCloudEvent({
+      type: 'set_pin',
+      memberId: pendingSetupMemberId,
+      pinHash: pin1
     });
-    const data = await res.json();
-    if (!res.ok) {
-      alert(data.error || 'Fout');
-      return;
-    }
 
-    const member = state.members.find(m => m.id === pendingSetupMemberId);
-    if (member) {
-      saveStoredUser({ id: member.id, name: member.name, pin: pin1 });
-    }
-    playSuccessChime();
-    showToast('Pincode ingesteld!', '🔒');
-    closeSetupPinModal();
-    renderMembers();
-  } catch (e) {
-    alert('Fout bij opslaan pincode');
+    // Save permanently in cookie on this phone!
+    saveStoredUser({ id: member.id, name: member.name, pin: pin1 });
   }
+
+  playSuccessChime();
+  showToast('Pincode ingesteld en onthouden!', '🔒');
+  closeSetupPinModal();
+  renderMembers();
 }
 
 // Drink Modal
@@ -1044,110 +1026,24 @@ function closeDrinkModal() {
   targetMemberForDrink = null;
 }
 
-async function directTally(memberId, count, drinkId, pin, memberName) {
-  const apiBase = getApiBaseUrl();
-
-  if (!apiBase && window.location.hostname.includes('github.io')) {
-    const member = state.members.find(m => m.id === memberId);
-    if (member) {
-      member.tallies = (member.tallies || 0) + count;
-      recalculateState();
-      saveLocalStateFallback(state);
-      playMarkerSound(count);
-      triggerHaptic('heavy');
-      showToast(`+${count} streep voor ${memberName}!`, '✍️');
-      renderMembers();
-    }
-    return;
-  }
-
-  try {
-    const res = await fetch(`${apiBase}/api/tally`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ memberId, count, drinkId, pin })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      clearStoredUser();
-      openPinModal({ type: 'tally', memberId, memberName, count, drinkId });
-      return;
-    }
-    playMarkerSound(count);
-    triggerHaptic('heavy');
-    showToast(`+${count} streep voor ${memberName}!`, '✍️');
-  } catch (e) {
-    showToast('Verbindingsfout', '❌');
-  }
-}
-
-// WebSocket Live Sync
-function setupWebSocket() {
-  const apiBase = getApiBaseUrl();
-  let wsUrl = '';
-
-  if (apiBase) {
-    wsUrl = apiBase.replace(/^http/, 'ws');
-  } else if (!window.location.hostname.includes('github.io')) {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    wsUrl = `${protocol}//${window.location.host}`;
-  } else {
-    // GitHub Pages without custom backend: uses BroadcastChannel & local sync
-    document.getElementById('statusDot').classList.remove('offline');
-    return;
-  }
-
-  try {
-    ws = new WebSocket(wsUrl);
-    ws.onopen = () => {
-      document.getElementById('statusDot').classList.remove('offline');
-    };
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.state) {
-          state = msg.state;
-          renderMembers();
-          renderStats();
-          renderSettle();
-          renderAdminMemberList();
-        }
-        if (msg.type === 'TALLY_ADDED') {
-          playMarkerSound(msg.count);
-        }
-      } catch (e) {}
-    };
-    ws.onclose = () => {
-      document.getElementById('statusDot').classList.add('offline');
-      clearTimeout(reconnectTimer);
-      reconnectTimer = setTimeout(setupWebSocket, 3000);
-    };
-    ws.onerror = () => ws.close();
-  } catch (e) {
-    setTimeout(setupWebSocket, 4000);
-  }
+// Direct 1-tap tally for own phone
+function directTally(memberId, count, drinkId, memberName) {
+  publishCloudEvent({
+    type: 'tally',
+    memberId,
+    count,
+    drinkId
+  });
+  playMarkerSound(count);
+  triggerHaptic('heavy');
+  showToast(`+${count} streep voor ${memberName}!`, '✍️');
 }
 
 // Initial Loading
 async function initApp() {
+  loadLocalState();
   activeUser = loadStoredUser();
   adminPassword = sessionStorage.getItem('ksa_admin_password') || null;
-
-  // Check for local fallback state
-  const localFallback = loadLocalStateFallback();
-  if (localFallback) {
-    state = localFallback;
-  }
-
-  const apiBase = getApiBaseUrl();
-  if (apiBase || !window.location.hostname.includes('github.io')) {
-    try {
-      const res = await fetch(`${apiBase}/api/state`);
-      if (res.ok) {
-        state = await res.json();
-      }
-    } catch (e) {}
-  }
 
   renderMembers();
   renderStats();
@@ -1158,46 +1054,12 @@ async function initApp() {
     setTimeout(openSelectUserModal, 500);
   }
 
-  setupWebSocket();
-  loadNetworkInfo();
+  // Connect to live ntfy.sh pub/sub stream
+  connectCloudSync();
+  fetchCloudHistory();
 
-  // Listen to cross-tab updates if on static pages
-  if (broadcastChannel) {
-    broadcastChannel.onmessage = (ev) => {
-      if (ev.data && ev.data.state) {
-        state = ev.data.state;
-        renderMembers();
-      }
-    };
-  }
-
-  // Pre-fill backend input in admin
-  const backendInput = document.getElementById('inputBackendUrl');
-  if (backendInput) {
-    backendInput.value = localStorage.getItem('ksa_backend_url') || '';
-  }
-}
-
-async function loadNetworkInfo() {
-  const apiBase = getApiBaseUrl();
-  if (!apiBase && window.location.hostname.includes('github.io')) {
-    document.getElementById('qrUrlLink').href = window.location.href;
-    document.getElementById('qrUrlLink').textContent = window.location.href;
-    return;
-  }
-
-  try {
-    const res = await fetch(`${apiBase}/api/network-info`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.qrCodeDataUrl) {
-        document.getElementById('qrCodeImg').src = data.qrCodeDataUrl;
-      }
-      const link = document.getElementById('qrUrlLink');
-      link.href = data.url;
-      link.textContent = data.url;
-    }
-  } catch (e) {}
+  document.getElementById('qrUrlLink').href = window.location.href;
+  document.getElementById('qrUrlLink').textContent = window.location.href;
 }
 
 // Event Listeners
@@ -1208,10 +1070,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnSwitchUser').addEventListener('click', openSelectUserModal);
   document.getElementById('btnCloseSelectUser').addEventListener('click', closeSelectUserModal);
 
-  // Quick Action Buttons
+  // Quick Action Buttons (1-TAP ON PHONE - NO PIN ASKED EVER!)
   document.getElementById('btnMyQuickBeer').addEventListener('click', () => {
     if (activeUser) {
-      directTally(activeUser.id, 1, 'pintje', activeUser.pin, activeUser.name);
+      directTally(activeUser.id, 1, 'pintje', activeUser.name);
     } else {
       openSelectUserModal();
     }
@@ -1219,7 +1081,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('btnMyQuickFive').addEventListener('click', () => {
     if (activeUser) {
-      directTally(activeUser.id, 5, 'pintje', activeUser.pin, activeUser.name);
+      directTally(activeUser.id, 5, 'pintje', activeUser.name);
     } else {
       openSelectUserModal();
     }
@@ -1245,8 +1107,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    if (activeUser && activeUser.id === memId && activeUser.pin) {
-      directTally(memId, 1, drId, activeUser.pin, activeUser.name);
+    if (activeUser && activeUser.id === memId) {
+      directTally(memId, 1, drId, activeUser.name);
     } else {
       const mem = state.members.find(m => m.id === memId);
       openPinModal({
@@ -1270,8 +1132,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    if (activeUser && activeUser.id === memId && activeUser.pin) {
-      directTally(memId, 5, drId, activeUser.pin, activeUser.name);
+    if (activeUser && activeUser.id === memId) {
+      directTally(memId, 5, drId, activeUser.name);
     } else {
       const mem = state.members.find(m => m.id === memId);
       openPinModal({
@@ -1321,11 +1183,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('adminLoginModal').classList.remove('open');
   });
 
-  document.getElementById('btnSubmitAdminLogin').addEventListener('click', async () => {
+  document.getElementById('btnSubmitAdminLogin').addEventListener('click', () => {
     const pwd = document.getElementById('inputAdminPassword').value.trim();
     if (!pwd) return;
 
-    // Offline / GitHub Pages fallback password check
     if (pwd === 'ksa' || pwd === 'admin') {
       adminPassword = pwd;
       sessionStorage.setItem('ksa_admin_password', pwd);
@@ -1333,28 +1194,8 @@ document.addEventListener('DOMContentLoaded', () => {
       showToast('Admin ingelogd! 🔑', '🔑');
       updateAdminBar();
       document.getElementById('navBtnAdmin').click();
-      return;
-    }
-
-    const apiBase = getApiBaseUrl();
-    try {
-      const res = await fetch(`${apiBase}/api/admin/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: pwd })
-      });
-      if (res.ok) {
-        adminPassword = pwd;
-        sessionStorage.setItem('ksa_admin_password', pwd);
-        document.getElementById('adminLoginModal').classList.remove('open');
-        showToast('Admin ingelogd! 🔑', '🔑');
-        updateAdminBar();
-        document.getElementById('navBtnAdmin').click();
-      } else {
-        alert('Verkeerd admin wachtwoord!');
-      }
-    } catch (e) {
-      alert('Verbindingsfout');
+    } else {
+      alert('Verkeerd admin wachtwoord! (Standaard: ksa)');
     }
   });
 
@@ -1370,77 +1211,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const confirmation = prompt('Typ "WIS ALLES" om te bevestigen dat je alle strepen naar 0 wil resetten:');
     if (confirmation !== 'WIS ALLES') return;
 
-    const apiBase = getApiBaseUrl();
-    if (!apiBase && window.location.hostname.includes('github.io')) {
-      state.members.forEach(m => { m.tallies = 0; m.drinks = {}; });
-      recalculateState();
-      saveLocalStateFallback(state);
-      renderMembers();
-      renderAdminMemberList();
-      showToast('Alle streepjes gewist naar 0! 🗑️', '🗑️');
-      return;
-    }
-
-    try {
-      const res = await fetch(`${apiBase}/api/admin/clear-all`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: adminPassword })
-      });
-      if (res.ok) {
-        showToast('Alle streepjes gewist naar 0! 🗑️', '🗑️');
-      }
-    } catch (e) {
-      alert('Fout bij wissen');
-    }
+    publishCloudEvent({ type: 'clear_all' });
+    showToast('Alle streepjes gewist naar 0! 🗑️', '🗑️');
   });
 
-  document.getElementById('btnAddMemberSubmit').addEventListener('click', async () => {
+  document.getElementById('btnAddMemberSubmit').addEventListener('click', () => {
     const name = document.getElementById('inputNewMemberName').value.trim();
     if (!name) return;
 
-    const apiBase = getApiBaseUrl();
-    if (!apiBase && window.location.hostname.includes('github.io')) {
-      const newM = { id: 'm_' + Date.now(), name, hasPin: false, tallies: 0, drinks: {} };
-      state.members.push(newM);
-      saveLocalStateFallback(state);
-      document.getElementById('inputNewMemberName').value = '';
-      showToast(`${name} toegevoegd!`, '➕');
-      renderMembers();
-      renderAdminMemberList();
-      return;
-    }
-
-    try {
-      const res = await fetch(`${apiBase}/api/member`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
-      });
-      const data = await res.json();
-      if (!res.ok) return alert(data.error || 'Fout');
-      document.getElementById('inputNewMemberName').value = '';
-      showToast(`${name} toegevoegd!`, '➕');
-    } catch (e) {
-      alert('Fout bij toevoegen');
-    }
-  });
-
-  // Save backend URL setting
-  const btnSaveBackend = document.getElementById('btnSaveBackendUrl');
-  if (btnSaveBackend) {
-    btnSaveBackend.addEventListener('click', () => {
-      const url = document.getElementById('inputBackendUrl').value.trim();
-      if (url) {
-        localStorage.setItem('ksa_backend_url', url);
-        showToast('Backend link opgeslagen! Herladen...', '☁️');
-        setTimeout(() => window.location.reload(), 1000);
-      } else {
-        localStorage.removeItem('ksa_backend_url');
-        showToast('Backend link gewist (lokale modus)', '☁️');
+    publishCloudEvent({
+      type: 'add_member',
+      member: {
+        id: 'm_' + Date.now(),
+        name,
+        hasPin: false,
+        tallies: 0,
+        drinks: {}
       }
     });
-  }
+
+    document.getElementById('inputNewMemberName').value = '';
+    showToast(`${name} toegevoegd!`, '➕');
+  });
 
   // PDF Downloads
   document.getElementById('btnDownloadPdf').addEventListener('click', generatePdfReport);
@@ -1488,14 +1280,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Reset Karton
-  document.getElementById('btnNewKarton').addEventListener('click', async () => {
+  document.getElementById('btnNewKarton').addEventListener('click', () => {
     const title = prompt('Naam voor het nieuwe karton:', 'Karton ' + new Date().toLocaleDateString('nl-BE', { month: 'long', year: 'numeric' }));
     if (!title) return;
     if (!confirm('Huidig karton archiveren en alle streepjes resetten naar 0?')) return;
 
-    state.members.forEach(m => { m.tallies = 0; m.drinks = {}; });
-    recalculateState();
-    saveLocalStateFallback(state);
+    publishCloudEvent({ type: 'new_karton', title });
     showToast('Nieuw karton gestart!', '📦');
     document.querySelector('.nav-tab-btn[data-tab="tabKarton"]').click();
   });
