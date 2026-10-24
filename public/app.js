@@ -59,6 +59,40 @@ let currentPendingAction = null;
 let selectedDrinkId = localStorage.getItem('ksa_selected_drink') || 'pintje';
 let targetMemberForDrink = null;
 
+// PIN Session Unlock (onthoudt 60 seconden na geldige pincode voor vlot meerdere strepen zetten)
+const PIN_UNLOCK_DURATION_MS = 60 * 1000;
+const unlockedMembers = new Map(); // memberId -> expiresAtTimestamp
+
+function isMemberPinUnlocked(memberId) {
+  if (!memberId || !unlockedMembers.has(memberId)) return false;
+  const expiresAt = unlockedMembers.get(memberId);
+  if (Date.now() > expiresAt) {
+    unlockedMembers.delete(memberId);
+    return false;
+  }
+  return true;
+}
+
+function unlockMemberPin(memberId) {
+  if (!memberId) return;
+  unlockedMembers.set(memberId, Date.now() + PIN_UNLOCK_DURATION_MS);
+}
+
+// Ruim periodiek verlopen tijdelijke ontgrendelingen op
+setInterval(() => {
+  if (unlockedMembers.size > 0) {
+    let changed = false;
+    const now = Date.now();
+    for (const [id, exp] of unlockedMembers.entries()) {
+      if (now > exp) {
+        unlockedMembers.delete(id);
+        changed = true;
+      }
+    }
+    if (changed) renderMembers();
+  }
+}, 5000);
+
 // Audio context
 let audioCtx = null;
 function initAudio() {
@@ -935,8 +969,14 @@ function renderMembers() {
   let html = '';
   filtered.forEach((m, idx) => {
     const isMe = activeUser && activeUser.id === m.id;
+    const isUnlocked = !isMe && isMemberPinUnlocked(m.id);
     const euro = (m.tallies * (state.pricePerTally || 1.0)).toFixed(2).replace('.', ',');
-    const pinWarning = !m.hasPin ? `<span class="member-row-pin-status needs-setup" onclick="event.stopPropagation(); window.app.openSetupPinModal('${m.id}')" title="Tik om PIN in te stellen">⚠️ Stel PIN in</span>` : '';
+    let pinWarning = '';
+    if (!m.hasPin) {
+      pinWarning = `<span class="member-row-pin-status needs-setup" onclick="event.stopPropagation(); window.app.openSetupPinModal('${m.id}')" title="Tik om PIN in te stellen">⚠️ Stel PIN in</span>`;
+    } else if (isUnlocked) {
+      pinWarning = `<span class="member-row-pin-status" style="color: #059669; font-weight: 700;">🔓 1 min actief</span>`;
+    }
 
     // Geen medaille tenzij lid effectief > 0 strepen heeft en in top 3 staat
     let medalTag = '';
@@ -1323,6 +1363,14 @@ window.app = {
       return;
     }
 
+    // Is deze persoon de afgelopen 60 seconden al ontgrendeld met pincode?
+    if (isMemberPinUnlocked(member.id)) {
+      unlockMemberPin(member.id); // Verleng 60s timer voor volgende strepen
+      directTally(member.id, 1, currentDrink.id, member.name, currentDrink.name);
+      renderMembers(); // Werk indicator bij
+      return;
+    }
+
     openPinModal({
       type: 'tally',
       memberId: member.id,
@@ -1451,7 +1499,7 @@ function openPinModal(action) {
   if (action.type === 'setActiveUser') {
     document.getElementById('pinTargetSub').textContent = `Geef je pincode in om in te loggen als ${member.name}`;
   } else {
-    document.getElementById('pinTargetSub').textContent = `Pincode van ${member.name} (+${action.count || 1} ${action.drinkName || 'drank'})`;
+    document.getElementById('pinTargetSub').innerHTML = `Pincode van ${member.name} (+${action.count || 1} ${action.drinkName || 'drank'})<br><span style="font-size: 11px; color: #8c6a46; font-weight: normal; margin-top: 4px; display: block;">🔓 Blijft daarna 1 minuut ontgrendeld op jouw gsm</span>`;
   }
 
   document.getElementById('pinModal').classList.add('open');
@@ -1495,6 +1543,9 @@ async function submitPinAction(pin) {
     return;
   }
 
+  // Pincode geverifieerd! Ontgrendel dit lid 60 seconden lang op dit apparaat
+  unlockMemberPin(action.memberId);
+
   const currentDrink = getSelectedDrink();
 
   publishCloudEvent({
@@ -1506,8 +1557,9 @@ async function submitPinAction(pin) {
 
   playMarkerSound(action.count || 1);
   triggerHaptic('heavy');
-  showToast(`+${action.count || 1} streep voor ${action.memberName}!`, '✍️');
+  showToast(`+${action.count || 1} streep voor ${action.memberName}! 🔓 (1 min ontgrendeld)`, '✍️');
   closePinModal();
+  renderMembers();
 }
 
 function handlePinError(message) {
