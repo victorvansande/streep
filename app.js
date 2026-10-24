@@ -1003,7 +1003,6 @@ function renderMembers() {
             <span class="badge-count">${m.tallies}</span>
             <span class="badge-euro">€${euro}</span>
           </div>
-          ${adminPassword ? `<button class="btn-row-minus-pill" onclick="event.stopPropagation(); window.app.adminTally('${m.id}', -1)" title="1 streepje aftrekken (Admin)">-1</button>` : ''}
           <button class="btn-row-add-pill" onclick="event.stopPropagation(); window.app.quickAddOne('${m.id}')" title="Streepje toevoegen">+1</button>
           <button class="btn-row-drink-pill" onclick="event.stopPropagation(); window.app.openDrinkPicker('${m.id}')" title="Kies drankje">🥤</button>
         </div>
