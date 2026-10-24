@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <script>
     // Force cache bust if new version released (e.g. homescreen / Safari cache)
-    const APP_BUILD_VERSION = '4.4';
+    const APP_BUILD_VERSION = '4.5';
     try {
       const saved = localStorage.getItem('ksa_app_build_version');
       if (saved !== APP_BUILD_VERSION) {
@@ -24,7 +24,7 @@
     } catch (e) {}
   </script>
   <link rel="manifest" href="./manifest.json">
-  <link rel="stylesheet" href="./style.css?v=4.4">
+  <link rel="stylesheet" href="./style.css?v=4.5">
   <!-- jsPDF and autoTable for instant PDF downloads (deferred for maximum page speed) -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -440,6 +440,6 @@
     <span id="toastText">Streepje getrokken!</span>
   </div>
 
-  <script defer src="./app.js?v=4.4"></script>
+  <script defer src="./app.js?v=4.5"></script>
 </body>
 </html>

@@ -19,6 +19,12 @@
   padding: 0;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
+  -webkit-user-select: none;
+}
+
+input, textarea {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 body {
@@ -32,6 +38,8 @@ body {
   min-height: -webkit-fill-available;
   padding-bottom: calc(85px + var(--safe-bottom));
   touch-action: manipulation;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .font-marker {
@@ -43,10 +51,11 @@ body {
   position: sticky;
   top: 0;
   z-index: 40;
-  background: rgba(240, 226, 207, 0.92);
+  background: rgba(240, 226, 207, 0.94);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(216, 195, 165, 0.6);
-  padding: 10px 16px;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 14px 8px 14px;
 }
 
 .top-bar-row {
@@ -317,9 +326,11 @@ body {
 }
 
 .mini-lead-podium {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
   gap: 8px;
+  width: 100%;
 }
 
 .podium-pill {
@@ -331,6 +342,9 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  flex: 1;
+  max-width: 180px;
+  min-width: 0;
   transition: transform 0.1s ease;
 }
 
@@ -570,6 +584,8 @@ body {
   border: 1.5px solid #baa284;
   border-radius: 999px;
   padding: 6px 12px;
+  min-height: 36px;
+  min-width: 40px;
   font-weight: 800;
   font-size: 13px;
   color: #3b2816;
@@ -579,6 +595,7 @@ body {
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   transition: transform 0.1s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .btn-row-add-pill:active {
@@ -591,6 +608,8 @@ body {
   border: 1.5px solid #baa284;
   border-radius: 999px;
   padding: 5px 8px;
+  min-height: 36px;
+  min-width: 36px;
   font-size: 13px;
   display: flex;
   align-items: center;
@@ -598,6 +617,7 @@ body {
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   transition: transform 0.1s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .btn-row-drink-pill:active {
@@ -611,6 +631,8 @@ body {
   color: #b91c1c;
   border-radius: 999px;
   padding: 6px 10px;
+  min-height: 36px;
+  min-width: 36px;
   font-weight: 800;
   font-size: 13px;
   display: flex;
@@ -619,6 +641,7 @@ body {
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   transition: transform 0.1s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .btn-row-minus-pill:active {
@@ -1060,4 +1083,62 @@ body {
   background: #ef4444;
   animation: none;
   box-shadow: none;
+}
+
+/* Responsive enhancements for small smartphones (iPhone SE, compact Android ~360px) */
+@media (max-width: 380px) {
+  .board-wrapper {
+    padding: 0 8px;
+  }
+  .member-row {
+    padding: 8px 8px;
+    gap: 6px;
+  }
+  .member-info-col {
+    width: 82px;
+    min-width: 75px;
+  }
+  .member-row-name {
+    font-size: 16px;
+  }
+  .btn-row-add-pill {
+    padding: 6px 10px;
+    font-size: 13px;
+    min-width: 36px;
+  }
+  .btn-row-drink-pill {
+    padding: 5px 6px;
+    min-width: 32px;
+  }
+  .btn-row-minus-pill {
+    padding: 6px 8px;
+    min-width: 32px;
+  }
+  .badge-count {
+    font-size: 14px;
+  }
+  .badge-euro {
+    font-size: 10px;
+  }
+  .app-title {
+    font-size: 14.5px;
+  }
+  .total-pill {
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+  .top-header {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .drinks-grid {
+    gap: 8px;
+  }
+  .drink-pill-card {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .drink-pill-icon {
+    font-size: 22px;
+  }
 }
