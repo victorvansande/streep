@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <script>
     // Force cache bust if new version released (e.g. homescreen / Safari cache)
-    const APP_BUILD_VERSION = '4.7';
+    const APP_BUILD_VERSION = '4.8';
     try {
       const saved = localStorage.getItem('ksa_app_build_version');
       if (saved !== APP_BUILD_VERSION) {
@@ -24,13 +24,13 @@
     } catch (e) {}
   </script>
   <!-- Favicon & Touch Icons for iOS and Android -->
-  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=4.7">
-  <link rel="alternate icon" type="image/png" href="./favicon.png?v=4.7">
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=4.7">
-  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=4.7">
-  <link rel="apple-touch-icon-precomposed" href="./apple-touch-icon.png?v=4.7">
-  <link rel="manifest" href="./manifest.json?v=4.7">
-  <link rel="stylesheet" href="./style.css?v=4.7">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=4.8">
+  <link rel="alternate icon" type="image/png" href="./favicon.png?v=4.8">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=4.8">
+  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=4.8">
+  <link rel="apple-touch-icon-precomposed" href="./apple-touch-icon.png?v=4.8">
+  <link rel="manifest" href="./manifest.json?v=4.8">
+  <link rel="stylesheet" href="./style.css?v=4.8">
   <!-- jsPDF and autoTable for instant PDF downloads (deferred for maximum page speed) -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -50,7 +50,7 @@
       </div>
       <div class="header-right">
         <div class="total-pill">
-          <span id="grandTallies">0</span> strepen (<strong id="grandEuros">€ 0</strong>)
+          <span id="grandTallies">0</span> strepen • <strong id="grandEuros">€ 0</strong>
         </div>
         <button class="btn-admin-icon" id="btnHeaderAdmin" title="Adminpaneel">⚙️</button>
         <div class="status-dot-mini" id="statusDot" title="Live gesynchroniseerd"></div>
@@ -65,12 +65,12 @@
   </div>
 
   <!-- Live Status Pill -->
-  <div id="cloudSyncBanner" style="display: flex; background: #ecfdf5; border: 1.5px solid #a7f3d0; border-radius: 999px; margin: 6px auto; max-width: 580px; padding: 5px 14px; font-size: 11.5px; color: #047857; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
-    <span style="display: flex; align-items: center; gap: 7px;">
+  <div id="cloudSyncBanner" style="display: flex; background: #ecfdf5; border: 1.5px solid #a7f3d0; border-radius: 999px; margin: 6px auto; max-width: 580px; padding: 4px 12px; font-size: 11px; color: #047857; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); white-space: nowrap;">
+    <span style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;">
       <span class="live-pulse-dot" id="cloudSyncDot"></span>
-      <strong id="cloudSyncText">Verbinding controleren...</strong>
+      <strong id="cloudSyncText" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Verbinding controleren...</strong>
     </span>
-    <span id="cloudSyncSub" style="font-size: 10.5px; font-weight: 700; color: #059669;">Live</span>
+    <span id="cloudSyncSub" style="font-size: 10px; font-weight: 700; color: #059669; white-space: nowrap; flex-shrink: 0; margin-left: 6px;">Live</span>
   </div>
 
   <!-- Main Board View -->
@@ -95,7 +95,7 @@
       <!-- Explicit Drink Selector Pill -->
       <button class="btn-pill-drink-selector" id="btnMyQuickChoice" title="Kies welk drankje geturfd wordt">
         <span class="pill-selector-left">
-          <span>🥤</span> Kies je drank • Geselecteerd:
+          <span>🥤</span> Drank:
         </span>
         <span class="pill-selector-badge" id="currentDrinkBadge">Pintje 🍺 (wijzig)</span>
       </button>
@@ -456,6 +456,6 @@
     <span id="toastText">Streepje getrokken!</span>
   </div>
 
-  <script defer src="./app.js?v=4.7"></script>
+  <script defer src="./app.js?v=4.8"></script>
 </body>
 </html>
