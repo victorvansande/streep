@@ -473,10 +473,10 @@ function applySyncEvent(ev, isLocalOrigin = false) {
   return stateChanged;
 }
 
-// --- LIVE MULTI-BROKER REALTIME CLOUD ENGINE (EMQX + HiveMQ WSS) ---
+// --- LIVE MULTI-BROKER REALTIME CLOUD ENGINE (HiveMQ + EMQX Ultra-Fast WSS) ---
 const MQTT_BROKERS = [
-  'wss://broker.emqx.io:8084/mqtt',
-  'wss://broker.hivemq.com:8884/mqtt'
+  'wss://broker.hivemq.com:8884/mqtt',
+  'wss://broker.emqx.io:8084/mqtt'
 ];
 const MQTT_BASE_TOPIC = 'ksa/streep/2026/victorvansande';
 const TOPIC_EVENTS = `${MQTT_BASE_TOPIC}/events`;
@@ -522,30 +522,20 @@ function isLiveConnected() {
   return typeof navigator !== 'undefined' && navigator.onLine && mqttClient && mqttClient.connected;
 }
 
-function requireLiveConnection() {
-  if (!isLiveConnected()) {
-    showToast('⚠️ Geen verbinding! Zet 4G of wifi aan om te strepen.', '⚠️');
-    playErrorTone();
-    triggerHaptic('heavy');
-    return false;
-  }
-  return true;
-}
-
+// Optimistic UI: Gebruikers hoeven NOOIT te wachten op een trage verbinding!
+// Knoppen blijven altijd direct klikbaar, data wordt via persistente outbox gesynchroniseerd.
 function updateTallyButtonsLockState() {
-  const connected = isLiveConnected();
   const quickBeer = document.getElementById('btnMyQuickBeer');
-
   if (quickBeer) {
-    quickBeer.style.opacity = connected ? '1' : '0.45';
-    quickBeer.style.cursor = connected ? 'pointer' : 'not-allowed';
-    quickBeer.title = connected ? '' : 'Geen verbinding - zet 4G of wifi aan';
+    quickBeer.style.opacity = '1';
+    quickBeer.style.cursor = 'pointer';
+    quickBeer.title = '';
   }
 
   document.querySelectorAll('.btn-row-add-pill').forEach(btn => {
-    btn.style.opacity = connected ? '1' : '0.45';
-    btn.style.cursor = connected ? 'pointer' : 'not-allowed';
-    btn.title = connected ? 'Streepje toevoegen' : 'Geen verbinding - zet 4G of wifi aan';
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+    btn.title = 'Streepje toevoegen';
   });
 }
 
@@ -762,7 +752,7 @@ async function publishCloudEvent(ev) {
 
 function connectCloudSync() {
   if (typeof window.mqtt === 'undefined') {
-    setTimeout(connectCloudSync, 400);
+    setTimeout(connectCloudSync, 200);
     return;
   }
 
@@ -775,15 +765,20 @@ function connectCloudSync() {
   isConnecting = true;
 
   const brokerUrl = MQTT_BROKERS[currentBrokerIdx];
-  updateCloudStatus('connecting', 'Verbinding controleren...');
+  updateCloudStatus('connecting', 'Live verbinding maken...');
 
   try {
+    if (mqttClient) {
+      try { mqttClient.end(true); } catch (e) {}
+      mqttClient = null;
+    }
+
     mqttClient = window.mqtt.connect(brokerUrl, {
       clientId: myClientId,
       clean: true,
-      connectTimeout: 5000,
-      reconnectPeriod: 2500,
-      keepalive: 30
+      connectTimeout: 2800,
+      reconnectPeriod: 1200,
+      keepalive: 25
     });
 
     mqttClient.on('connect', () => {
@@ -822,8 +817,12 @@ function connectCloudSync() {
     mqttClient.on('error', (err) => {
       console.warn('MQTT fout op broker:', brokerUrl, err);
       isConnecting = false;
+      try { mqttClient.end(true); } catch (e) {}
+      mqttClient = null;
+      // Schakel direct over naar de alternatieve broker
       currentBrokerIdx = (currentBrokerIdx + 1) % MQTT_BROKERS.length;
       updateCloudStatus('connecting', 'Verbinding herstellen...');
+      setTimeout(connectCloudSync, 400);
     });
 
     mqttClient.on('offline', () => {
@@ -844,7 +843,7 @@ function connectCloudSync() {
   } catch (err) {
     isConnecting = false;
     console.error('MQTT startup fout:', err);
-    setTimeout(connectCloudSync, 3000);
+    setTimeout(connectCloudSync, 1200);
   }
 }
 
@@ -1300,7 +1299,6 @@ window.app = {
   },
 
   quickAddOne: (memberId) => {
-    if (!requireLiveConnection()) return;
     const member = state.members.find(m => m.id === memberId);
     if (!member) return;
 
@@ -1367,7 +1365,6 @@ window.app = {
 
   adminTally: async (memberId, count) => {
     if (!adminPassword) return;
-    if (!requireLiveConnection()) return;
     const currentDrink = getSelectedDrink();
     publishCloudEvent({
       type: 'tally',
@@ -1498,11 +1495,6 @@ async function submitPinAction(pin) {
     return;
   }
 
-  if (!requireLiveConnection()) {
-    closePinModal();
-    return;
-  }
-
   const currentDrink = getSelectedDrink();
 
   publishCloudEvent({
@@ -1613,7 +1605,6 @@ function closeDrinkModal() {
 }
 
 function directTally(memberId, count, drinkId, memberName, drinkName) {
-  if (!requireLiveConnection()) return;
   publishCloudEvent({
     type: 'tally',
     memberId,
@@ -1717,7 +1708,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Quick Action Buttons (1-TAP ON PHONE)
   document.getElementById('btnMyQuickBeer').addEventListener('click', () => {
-    if (!requireLiveConnection()) return;
     if (activeUser) {
       const member = state.members.find(m => m.id === activeUser.id);
       if (member && !member.hasPin) {
@@ -1915,30 +1905,32 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('.nav-tab-btn[data-tab="tabKarton"]').click();
   });
 
-  // Resume & Sync on Phone Unlock / Tab Switch
+  // Bliksemsnelle herverbinding bij ontgrendelen gsm of tabblad openen
+  function quickResumeSync() {
+    if (!mqttClient || !mqttClient.connected) {
+      isConnecting = false;
+      connectCloudSync();
+    } else {
+      broadcastStateRequest();
+      flushOutbox();
+    }
+  }
+
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      if (!mqttClient || !mqttClient.connected) {
-        connectCloudSync();
-      } else {
-        broadcastStateRequest();
-      }
+      quickResumeSync();
     }
   });
 
   // Re-check sync on window focus
   window.addEventListener('focus', () => {
-    if (mqttClient && mqttClient.connected) {
-      broadcastStateRequest();
-    } else {
-      connectCloudSync();
-    }
+    quickResumeSync();
   });
 
   // Offline / Online netwerkdetectie (bv. 4G uit of hersteld)
   window.addEventListener('online', () => {
     updateCloudStatus('connecting', 'Verbinding herstellen...');
-    connectCloudSync();
+    quickResumeSync();
   });
 
   window.addEventListener('offline', () => {
