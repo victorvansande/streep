@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <script>
     // Force cache bust if new version released (e.g. homescreen / Safari cache)
-    const APP_BUILD_VERSION = '4.3';
+    const APP_BUILD_VERSION = '4.4';
     try {
       const saved = localStorage.getItem('ksa_app_build_version');
       if (saved !== APP_BUILD_VERSION) {
@@ -24,7 +24,7 @@
     } catch (e) {}
   </script>
   <link rel="manifest" href="./manifest.json">
-  <link rel="stylesheet" href="./style.css?v=4.3">
+  <link rel="stylesheet" href="./style.css?v=4.4">
   <!-- jsPDF and autoTable for instant PDF downloads (deferred for maximum page speed) -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -67,60 +67,60 @@
     <span id="cloudSyncSub" style="font-size: 10.5px; font-weight: 700; color: #059669;">Live</span>
   </div>
 
-  <!-- My Quick Actions Hero Banner -->
-  <section class="my-quick-banner" id="myQuickBanner">
-    <div class="my-quick-top">
-      <div class="my-user-greeting">
-        Jij: <strong class="my-user-name" id="myUserName">Kies je naam</strong>
-        <button class="switch-user-link" id="btnSwitchUser">(wijzig)</button>
+  <!-- Main Board View -->
+  <main class="board-wrapper" id="tabKarton">
+    <!-- My Quick Actions Hero Banner -->
+    <section class="my-quick-banner" id="myQuickBanner">
+      <div class="my-quick-top">
+        <div class="my-user-greeting">
+          Jij: <strong class="my-user-name" id="myUserName">Kies je naam</strong>
+          <button class="switch-user-link" id="btnSwitchUser">(wijzig)</button>
+        </div>
+        <span class="my-tally-count" id="myUserCount">0 strepen</span>
       </div>
-      <span class="my-tally-count" id="myUserCount">0 strepen</span>
-    </div>
 
-    <!-- Quick Action 1-Tap Button -->
-    <div class="my-action-row" id="myActionRow">
-      <button class="btn-pill-primary" id="btnMyQuickBeer">
-        <span id="quickAddLabel">🍺 +1 Pintje</span>
+      <!-- Quick Action 1-Tap Button -->
+      <div class="my-action-row" id="myActionRow">
+        <button class="btn-pill-primary" id="btnMyQuickBeer">
+          <span id="quickAddLabel">🍺 +1 Pintje</span>
+        </button>
+      </div>
+
+      <!-- Explicit Drink Selector Pill -->
+      <button class="btn-pill-drink-selector" id="btnMyQuickChoice" title="Kies welk drankje geturfd wordt">
+        <span class="pill-selector-left">
+          <span>🥤</span> Kies je drank • Geselecteerd:
+        </span>
+        <span class="pill-selector-badge" id="currentDrinkBadge">Pintje 🍺 (wijzig)</span>
+      </button>
+    </section>
+
+    <!-- Mini Leaderboard (Top 3 Grootste Drinkers) -->
+    <section class="mini-leaderboard" id="miniLeaderboard">
+      <div class="mini-lead-header">
+        <span>🏆 Grootste Drinkers</span>
+        <span style="font-size: 10px; font-weight: 700; text-transform: none; color: #9c8365;">Top 3</span>
+      </div>
+      <div class="mini-lead-podium" id="podiumContent">
+        <!-- Injected: 🥇 1ste, 🥈 2de, 🥉 3de -->
+      </div>
+    </section>
+
+    <!-- Slim Search & Add Visitor Button -->
+    <div class="search-container" style="display: flex; gap: 8px;">
+      <input 
+        type="search" 
+        id="searchInput" 
+        class="search-input-pill" 
+        placeholder="Zoek leiding of bezoeker..." 
+        autocomplete="off"
+        style="flex: 1;"
+      >
+      <button id="btnOpenAddVisitor" class="btn-add-visitor-pill" title="Voeg een bezoeker toe die mee drinkt">
+        <span>➕</span> Bezoeker
       </button>
     </div>
 
-    <!-- Explicit Drink Selector Pill -->
-    <button class="btn-pill-drink-selector" id="btnMyQuickChoice" title="Kies welk drankje geturfd wordt">
-      <span class="pill-selector-left">
-        <span>🥤</span> Kies je drank • Geselecteerd:
-      </span>
-      <span class="pill-selector-badge" id="currentDrinkBadge">Pintje 🍺 (wijzig)</span>
-    </button>
-  </section>
-
-  <!-- Mini Leaderboard (Top 3 Grootste Drinkers) -->
-  <section class="mini-leaderboard" id="miniLeaderboard">
-    <div class="mini-lead-header">
-      <span>🏆 Grootste Drinkers</span>
-      <span style="font-size: 10px; font-weight: 700; text-transform: none; color: #9c8365;">Top 3</span>
-    </div>
-    <div class="mini-lead-podium" id="podiumContent">
-      <!-- Injected: 🥇 1ste, 🥈 2de, 🥉 3de -->
-    </div>
-  </section>
-
-  <!-- Slim Search & Add Visitor Button -->
-  <div class="search-container" style="display: flex; gap: 8px;">
-    <input 
-      type="search" 
-      id="searchInput" 
-      class="search-input-pill" 
-      placeholder="Zoek leiding of bezoeker..." 
-      autocomplete="off"
-      style="flex: 1;"
-    >
-    <button id="btnOpenAddVisitor" class="btn-add-visitor-pill" title="Voeg een bezoeker toe die mee drinkt">
-      <span>➕</span> Bezoeker
-    </button>
-  </div>
-
-  <!-- Main Board View -->
-  <main class="board-wrapper" id="tabKarton">
     <div class="board-card">
       <div class="board-header">
         <span id="boardTitle">Karton Najaar 2026</span>
@@ -440,6 +440,6 @@
     <span id="toastText">Streepje getrokken!</span>
   </div>
 
-  <script defer src="./app.js?v=4.3"></script>
+  <script defer src="./app.js?v=4.4"></script>
 </body>
 </html>
