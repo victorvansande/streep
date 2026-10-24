@@ -28,7 +28,7 @@ function getAdminConfig() {
     } catch (e) {}
   }
   const defaultAdmin = {
-    passwordHash: crypto.createHash('sha256').update('ksa').digest('hex') // Default password: ksa
+    passwordHash: crypto.createHash('sha256').update('drank2026').digest('hex')
   };
   fs.writeFileSync(ADMIN_FILE, JSON.stringify(defaultAdmin, null, 2), 'utf-8');
   return defaultAdmin;

@@ -492,17 +492,11 @@ function requireLiveConnection() {
 function updateTallyButtonsLockState() {
   const connected = isLiveConnected();
   const quickBeer = document.getElementById('btnMyQuickBeer');
-  const quickFive = document.getElementById('btnMyQuickFive');
 
   if (quickBeer) {
     quickBeer.style.opacity = connected ? '1' : '0.45';
     quickBeer.style.cursor = connected ? 'pointer' : 'not-allowed';
     quickBeer.title = connected ? '' : 'Geen verbinding - zet 4G of wifi aan';
-  }
-  if (quickFive) {
-    quickFive.style.opacity = connected ? '1' : '0.45';
-    quickFive.style.cursor = connected ? 'pointer' : 'not-allowed';
-    quickFive.title = connected ? '' : 'Geen verbinding - zet 4G of wifi aan';
   }
 
   document.querySelectorAll('.btn-row-add-pill').forEach(btn => {
@@ -968,7 +962,6 @@ function renderAdminMemberList() {
         <div style="display: flex; gap: 4px; align-items: center;">
           <button class="admin-btn-sm" onclick="window.app.adminTally('${m.id}', 1)">+1</button>
           <button class="admin-btn-sm" onclick="window.app.adminTally('${m.id}', -1)">-1</button>
-          <button class="admin-btn-sm" onclick="window.app.adminTally('${m.id}', 5)">+5</button>
           <button class="admin-btn-sm" onclick="window.app.adminSetTalliesPrompt('${m.id}', ${m.tallies})">✏️</button>
           <button class="admin-btn-sm" style="color: #b91c1c;" onclick="window.app.adminResetPin('${m.id}')" title="Reset PIN">🔑</button>
           <button class="admin-btn-sm" style="color: #991b1b;" onclick="window.app.adminRemoveMember('${m.id}', '${m.name}')">✕</button>
@@ -1368,8 +1361,6 @@ function openPinModal(action) {
 
   if (action.type === 'setActiveUser') {
     document.getElementById('pinTargetSub').textContent = `Geef je pincode in om in te loggen als ${member.name}`;
-  } else if (action.count === 5) {
-    document.getElementById('pinTargetSub').textContent = `Pincode van ${member.name} voor ⚡ 5 strepen`;
   } else {
     document.getElementById('pinTargetSub').textContent = `Pincode van ${member.name} (+${action.count || 1} ${action.drinkName || 'drank'})`;
   }
@@ -1648,21 +1639,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  document.getElementById('btnMyQuickFive').addEventListener('click', () => {
-    if (!requireLiveConnection()) return;
-    if (activeUser) {
-      const member = state.members.find(m => m.id === activeUser.id);
-      if (member && !member.hasPin) {
-        openSetupPinModal(activeUser.id);
-        return;
-      }
-      const current = getSelectedDrink();
-      directTally(activeUser.id, 5, current.id, activeUser.name, current.name);
-    } else {
-      openSelectUserModal();
-    }
-  });
-
   // Drink modal confirm selection
   const btnConfirmDrink = document.getElementById('btnConfirmDrinkSelection');
   if (btnConfirmDrink) {
@@ -1716,19 +1692,29 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('adminLoginModal').classList.remove('open');
   });
 
+  const inputAdminPwd = document.getElementById('inputAdminPassword');
+  if (inputAdminPwd) {
+    inputAdminPwd.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        document.getElementById('btnSubmitAdminLogin').click();
+      }
+    });
+  }
+
   document.getElementById('btnSubmitAdminLogin').addEventListener('click', () => {
     const pwd = document.getElementById('inputAdminPassword').value.trim();
     if (!pwd) return;
 
-    if (pwd === 'ksa' || pwd === 'admin') {
+    if (pwd === 'drank2026') {
       adminPassword = pwd;
       sessionStorage.setItem('ksa_admin_password', pwd);
+      document.getElementById('inputAdminPassword').value = '';
       document.getElementById('adminLoginModal').classList.remove('open');
       showToast('Admin ingelogd! 🔑', '🔑');
       updateAdminBar();
       document.getElementById('navBtnAdmin').click();
     } else {
-      alert('Verkeerd admin wachtwoord! (Standaard: ksa)');
+      alert('Verkeerd admin wachtwoord!');
     }
   });
 
