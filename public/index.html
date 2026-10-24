@@ -170,9 +170,19 @@
         </h4>
         <p style="font-size: 12px; color: #705b45; margin-bottom: 12px;">1 streepje = € 1,00. Download hier de officiële PDF verrekening voor de kas.</p>
 
-        <button class="btn-pdf-download" id="btnAdminDownloadPdf" style="margin-bottom: 12px;">
+        <button class="btn-pdf-download" id="btnAdminDownloadPdf" style="margin-bottom: 10px;">
           <span>📄 Download PDF Afrekening (A4)</span>
         </button>
+
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <button class="btn-pill-secondary" id="btnAdminExportJson" style="flex: 1; padding: 9px 8px; font-size: 12px; border-radius: 999px;" title="Download een complete data-kopie van alle strepen">
+            💾 Download Backup
+          </button>
+          <button class="btn-pill-secondary" id="btnAdminImportJson" style="flex: 1; padding: 9px 8px; font-size: 12px; border-radius: 999px;" title="Herstel een eerdere data-kopie">
+            📥 Herstel Backup
+          </button>
+          <input type="file" id="fileImportJson" accept=".json" style="display: none;">
+        </div>
 
         <div style="font-size: 12px; font-weight: 700; color: #5a4025; margin-bottom: 6px;">Overzicht per leiding / bezoeker:</div>
         <div id="settleList" style="background: #faf4eb; border: 1px solid #e0cdb6; border-radius: 14px; max-height: 35vh; overflow-y: auto; padding: 4px 10px; margin-bottom: 12px;"></div>

@@ -260,30 +260,73 @@ function recalculateState() {
 
 function saveLocalState() {
   try {
-    localStorage.setItem('ksa_streep_karton_cache', JSON.stringify(state));
+    const serialized = JSON.stringify(state);
+    localStorage.setItem('ksa_streep_karton_cache', serialized);
+    // Veiligheidsreserve: bewaar altijd een permanente rollende backup zodra er streepjes zijn
+    if (state.totalTallies > 0) {
+      localStorage.setItem('ksa_streep_safety_backup', serialized);
+    }
   } catch (e) {}
 }
 
 function loadLocalState() {
   try {
-    const raw = localStorage.getItem('ksa_streep_karton_cache');
+    let raw = localStorage.getItem('ksa_streep_karton_cache');
+    // Als de hoofdcache leeg zou zijn geraakt, herstel direct uit de veiligheidsreserve
+    if (!raw) {
+      raw = localStorage.getItem('ksa_streep_safety_backup');
+    }
+
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.members && parsed.members.length > 0) {
-        state = parsed;
-        // Ensure Cara Rouge, Ice Tea and Ice Tea Green are present in loaded state
-        if (!state.drinks.some(d => d.id === 'cara_rouge')) {
-          state.drinks.splice(1, 0, { id: 'cara_rouge', name: 'Cara Rouge', icon: '🍒', price: 1.0 });
-        }
-        if (!state.drinks.some(d => d.id === 'ice_tea')) {
-          state.drinks.splice(2, 0, { id: 'ice_tea', name: 'Ice Tea', icon: '🍹', price: 1.0 });
-        }
-        if (!state.drinks.some(d => d.id === 'ice_tea_green')) {
-          state.drinks.splice(3, 0, { id: 'ice_tea_green', name: 'Ice Tea Green', icon: '🍃', price: 1.0 });
-        }
+        // Slimme merge: behoud ALTIJD alle bestaande live strepen, drankentellingen en pincodes
+        const existingMembersMap = new Map();
+        parsed.members.forEach(m => existingMembersMap.set(m.id, m));
+
+        const mergedMembers = [];
+        DEFAULT_MEMBERS.forEach(defM => {
+          if (existingMembersMap.has(defM.id)) {
+            const existing = existingMembersMap.get(defM.id);
+            mergedMembers.push({
+              ...defM,
+              ...existing,
+              tallies: existing.tallies || 0,
+              drinks: existing.drinks || {},
+              hasPin: existing.hasPin || false,
+              pinHash: existing.pinHash || null
+            });
+            existingMembersMap.delete(defM.id);
+          } else {
+            // Nieuw toegevoegd lid in de code
+            mergedMembers.push({ ...defM });
+          }
+        });
+
+        // Behoud alle dynamisch toegevoegde bezoekers tijdens het kamp/jaar
+        existingMembersMap.forEach(extraM => {
+          mergedMembers.push(extraM);
+        });
+
+        state = {
+          ...parsed,
+          members: mergedMembers,
+          drinks: parsed.drinks && parsed.drinks.length > 0 ? parsed.drinks : DEFAULT_DRINKS
+        };
+
+        // Zorg dat alle standaarddrankjes aanwezig blijven
+        DEFAULT_DRINKS.forEach(d => {
+          if (!state.drinks.some(sd => sd.id === d.id)) {
+            state.drinks.push(d);
+          }
+        });
+
+        recalculateState();
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Fout bij laden van lokale data:', e);
+  }
 }
 
 // Render Mini Leaderboard (Top 3)
@@ -1182,6 +1225,55 @@ function generatePdfReport() {
   showToast('PDF Verrekening gedownload! 📄', '📄');
 }
 
+// Data Backup & Export / Import
+function exportBackupJson() {
+  const backupData = {
+    app: 'Streep KSA Herentals',
+    exportedAt: new Date().toISOString(),
+    state: state
+  };
+  const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `KSA_Streepkarton_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Data Backup gedownload! 💾', '💾');
+}
+
+function importBackupJson(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      const importedState = data.state || data;
+      if (!importedState || !Array.isArray(importedState.members)) {
+        alert('Ongeldig backupbestand: geen leden gevonden.');
+        return;
+      }
+      if (!confirm(`Weet je zeker dat je deze backup wil herstellen? (${importedState.members.length} personen, ${importedState.totalTallies || 0} strepen)`)) {
+        return;
+      }
+      state = importedState;
+      recalculateState();
+      saveLocalState();
+      publishCurrentStateSnapshot();
+      renderMembers();
+      renderStats();
+      renderSettle();
+      renderAdminMemberList();
+      renderMiniLeaderboard();
+      updateMyQuickBanner();
+      showToast('Backup succesvol hersteld! 📥', '📥');
+    } catch (err) {
+      alert('Fout bij herstellen backup: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
 // Actions triggered by user interface
 window.app = {
   selectDrinkItem: (id) => {
@@ -1766,6 +1858,22 @@ document.addEventListener('DOMContentLoaded', () => {
   // PDF Download (in Admin paneel)
   const btnPdf = document.getElementById('btnAdminDownloadPdf');
   if (btnPdf) btnPdf.addEventListener('click', generatePdfReport);
+
+  // Backup Export & Import (in Admin paneel)
+  const btnExportJson = document.getElementById('btnAdminExportJson');
+  if (btnExportJson) btnExportJson.addEventListener('click', exportBackupJson);
+
+  const btnImportJson = document.getElementById('btnAdminImportJson');
+  const fileImportJson = document.getElementById('fileImportJson');
+  if (btnImportJson && fileImportJson) {
+    btnImportJson.addEventListener('click', () => fileImportJson.click());
+    fileImportJson.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        importBackupJson(e.target.files[0]);
+        e.target.value = '';
+      }
+    });
+  }
 
   // PIN Confirmation via native keyboard
   const inputPinConfirm = document.getElementById('inputPinConfirm');
