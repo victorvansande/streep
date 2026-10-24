@@ -2,40 +2,28 @@ const fs = require('fs');
 const zlib = require('zlib');
 const path = require('path');
 
-// 1. Create vector SVG icons
+// 1. Create clean, full-bleed Vector SVG icons (NO inner frame / NO kader in kader!)
 const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <!-- Material You Ambient Drop Shadow -->
-    <filter id="dropShadow" x="-10%" y="-10%" width="130%" height="130%">
-      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#452a15" flood-opacity="0.14" />
-      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#452a15" flood-opacity="0.08" />
-    </filter>
-
-    <!-- Tally Stroke Soft Ambient Shadow -->
+    <!-- Tally Stroke Soft Ambient Depth -->
     <filter id="tallyShadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="3" stdDeviation="3.5" flood-color="#3d2310" flood-opacity="0.18" />
+      <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#3d2310" flood-opacity="0.18" />
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#3d2310" flood-opacity="0.08" />
     </filter>
 
-    <!-- Warm Material You Sand / Cardboard Gradient -->
+    <!-- Warm Full-Bleed Sand / Cardboard Gradient -->
     <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#fdf9f4" />
       <stop offset="45%" stop-color="#f5ebe0" />
       <stop offset="100%" stop-color="#e8d7c2" />
     </linearGradient>
 
-    <!-- iOS Liquid Glass Specular Sheen -->
-    <linearGradient id="liquidSheen" x1="10%" y1="0%" x2="90%" y2="100%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.65" />
-      <stop offset="35%" stop-color="#ffffff" stop-opacity="0.16" />
-      <stop offset="70%" stop-color="#ffffff" stop-opacity="0.02" />
-      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.12" />
-    </linearGradient>
-
-    <!-- Glass Specular Rim Border -->
-    <linearGradient id="glassBorder" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.85" />
-      <stop offset="50%" stop-color="#eddcc9" stop-opacity="0.45" />
-      <stop offset="100%" stop-color="#baa389" stop-opacity="0.3" />
+    <!-- iOS Liquid Glass Specular Surface Sheen -->
+    <linearGradient id="liquidSheen" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.45" />
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.10" />
+      <stop offset="70%" stop-color="#ffffff" stop-opacity="0.0" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.08" />
     </linearGradient>
 
     <!-- KSA Dynamic Red Diagonal Gradient -->
@@ -48,42 +36,38 @@ const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512
     <!-- Espresso Charcoal Ink Gradient -->
     <linearGradient id="inkGrad" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" stop-color="#2a1f16" />
-      <stop offset="100%" stop-color="#19110b" />
+      <stop offset="100%" stop-color="#160f09" />
     </linearGradient>
   </defs>
 
-  <!-- Base Squircle with Shadow (Material You shape) -->
-  <rect x="32" y="32" width="448" height="448" rx="106" ry="106" fill="url(#bgGrad)" filter="url(#dropShadow)" />
+  <!-- Full Bleed Edge-to-Edge Canvas Background (No floating frame!) -->
+  <rect width="512" height="512" fill="url(#bgGrad)" />
 
-  <!-- Liquid Glass Overlay / Reflection -->
-  <rect x="32" y="32" width="448" height="448" rx="106" ry="106" fill="url(#liquidSheen)" />
-  <rect x="32" y="32" width="448" height="448" rx="106" ry="106" fill="none" stroke="url(#glassBorder)" stroke-width="2.5" />
+  <!-- Liquid Glass Surface Sheen across full icon -->
+  <rect width="512" height="512" fill="url(#liquidSheen)" />
 
-  <!-- Glass Light Reflection Arc -->
-  <path d="M 46,138 C 46,85 85,46 138,46 L 374,46 C 427,46 466,85 466,138 C 360,182 152,182 46,138 Z" fill="url(#liquidSheen)" opacity="0.35" />
-
-  <!-- 5 Tally Marks Group -->
+  <!-- 5 Tally Marks Group (Centered, Clean & Minimalist) -->
   <g filter="url(#tallyShadow)">
     <!-- 4 Vertical Minimalist Tally Strokes -->
-    <line x1="188" y1="168" x2="188" y2="344" stroke="url(#inkGrad)" stroke-width="22" stroke-linecap="round" />
-    <line x1="234" y1="166" x2="234" y2="346" stroke="url(#inkGrad)" stroke-width="22" stroke-linecap="round" />
-    <line x1="280" y1="166" x2="280" y2="346" stroke="url(#inkGrad)" stroke-width="22" stroke-linecap="round" />
-    <line x1="326" y1="168" x2="326" y2="344" stroke="url(#inkGrad)" stroke-width="22" stroke-linecap="round" />
+    <line x1="176" y1="138" x2="176" y2="374" stroke="url(#inkGrad)" stroke-width="26" stroke-linecap="round" />
+    <line x1="228" y1="134" x2="228" y2="378" stroke="url(#inkGrad)" stroke-width="26" stroke-linecap="round" />
+    <line x1="280" y1="134" x2="280" y2="378" stroke="url(#inkGrad)" stroke-width="26" stroke-linecap="round" />
+    <line x1="332" y1="138" x2="332" y2="374" stroke="url(#inkGrad)" stroke-width="26" stroke-linecap="round" />
 
     <!-- 5th Diagonal Crossing Slash (KSA Red) -->
-    <line x1="152" y1="322" x2="362" y2="190" stroke="url(#redSlashGrad)" stroke-width="24" stroke-linecap="round" />
+    <line x1="136" y1="350" x2="376" y2="160" stroke="url(#redSlashGrad)" stroke-width="30" stroke-linecap="round" />
   </g>
 
   <!-- Liquid Glass Specular Reflection on the Red Slash -->
-  <line x1="154" y1="321" x2="360" y2="191" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.4" />
+  <line x1="138" y1="349" x2="374" y2="161" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity="0.45" />
 </svg>`;
 
 // Write icon.svg and favicon.svg
 fs.writeFileSync('icon.svg', svgContent, 'utf-8');
 fs.writeFileSync('favicon.svg', svgContent, 'utf-8');
-console.log('✓ icon.svg & favicon.svg saved');
+console.log('✓ icon.svg & favicon.svg saved (clean full-bleed)');
 
-// 2. High-performance Anti-Aliased PNG Generator using Pure Node.js
+// 2. High-performance Anti-Aliased PNG Generator
 function distToSegment(px, py, ax, ay, bx, by) {
   const dx = bx - ax, dy = by - ay;
   const l2 = dx * dx + dy * dy;
@@ -93,39 +77,22 @@ function distToSegment(px, py, ax, ay, bx, by) {
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
 
-function roundedRectSDF(px, py, rx, ry, rw, rh, rad) {
-  // Center coordinates relative to box center
-  const cx = rx + rw / 2;
-  const cy = ry + rh / 2;
-  const qx = Math.abs(px - cx) - rw / 2 + rad;
-  const qy = Math.abs(py - cy) - rh / 2 + rad;
-  const outside = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) - rad;
-  const inside = Math.min(Math.max(qx, qy), 0) - rad;
-  return qx > 0 || qy > 0 ? outside : inside;
-}
-
 function renderIconPng(size) {
   const scale = size / 512;
   const rowSize = size * 4 + 1;
   const raw = Buffer.alloc(rowSize * size);
 
-  // Pre-scaled geometry
-  const boxX = 32 * scale;
-  const boxY = 32 * scale;
-  const boxW = 448 * scale;
-  const boxH = 448 * scale;
-  const boxRad = 106 * scale;
-
+  // Scaled geometry for 5 tally strokes
   const strokes = [
-    { x1: 188 * scale, y1: 168 * scale, x2: 188 * scale, y2: 344 * scale, w: 22 * scale, r: 35, g: 26, b: 18 },
-    { x1: 234 * scale, y1: 166 * scale, x2: 234 * scale, y2: 346 * scale, w: 22 * scale, r: 35, g: 26, b: 18 },
-    { x1: 280 * scale, y1: 166 * scale, x2: 280 * scale, y2: 346 * scale, w: 22 * scale, r: 35, g: 26, b: 18 },
-    { x1: 326 * scale, y1: 168 * scale, x2: 326 * scale, y2: 344 * scale, w: 22 * scale, r: 35, g: 26, b: 18 },
+    { x1: 176 * scale, y1: 138 * scale, x2: 176 * scale, y2: 374 * scale, w: 26 * scale, r: 35, g: 26, b: 18 },
+    { x1: 228 * scale, y1: 134 * scale, x2: 228 * scale, y2: 378 * scale, w: 26 * scale, r: 35, g: 26, b: 18 },
+    { x1: 280 * scale, y1: 134 * scale, x2: 280 * scale, y2: 378 * scale, w: 26 * scale, r: 35, g: 26, b: 18 },
+    { x1: 332 * scale, y1: 138 * scale, x2: 332 * scale, y2: 374 * scale, w: 26 * scale, r: 35, g: 26, b: 18 },
   ];
-  const redSlash = { x1: 152 * scale, y1: 322 * scale, x2: 362 * scale, y2: 190 * scale, w: 24 * scale, r: 220, g: 38, b: 38 };
+  const redSlash = { x1: 136 * scale, y1: 350 * scale, x2: 376 * scale, y2: 160 * scale, w: 30 * scale, r: 220, g: 38, b: 38 };
 
   // Supersampling factor
-  const subSamples = size <= 64 ? 4 : (size <= 192 ? 2 : 2);
+  const subSamples = size <= 64 ? 4 : 2;
   const subStep = 1 / subSamples;
 
   for (let y = 0; y < size; y++) {
@@ -140,44 +107,34 @@ function renderIconPng(size) {
           const px = x + (sx + 0.5) * subStep;
           const py = y + (sy + 0.5) * subStep;
 
-          // Check squircle distance
-          const dBox = roundedRectSDF(px, py, boxX, boxY, boxW, boxH, boxRad);
-
-          // Soft drop shadow outside squircle
-          if (dBox > 0) {
-            const shadowDist = Math.hypot(px - (boxX + boxW / 2), py - (boxY + boxH / 2 + 8 * scale)) - (boxW / 2);
-            if (shadowDist < 20 * scale && dBox < 24 * scale) {
-              const shadowAlpha = Math.max(0, (1 - dBox / (22 * scale)) * 0.18);
-              accR += 60 * shadowAlpha;
-              accG += 40 * shadowAlpha;
-              accB += 20 * shadowAlpha;
-              accA += shadowAlpha * 255;
-            }
-            continue;
-          }
-
-          // Inside squircle: Background color gradient
-          const tDiag = ((px - boxX) / boxW + (py - boxY) / boxH) * 0.5;
-          // Interpolate #fdf9f4 to #e8d7c2
+          // Full-bleed background color gradient (Edge to edge, NO inner frame!)
+          const tDiag = (px / size + py / size) * 0.5;
           let curR = 253 - tDiag * (253 - 232);
           let curG = 249 - tDiag * (249 - 215);
           let curB = 244 - tDiag * (244 - 194);
-          let curA = 1.0;
 
-          // Liquid Glass Sheen: Specular light gradient
-          const sheenT = Math.max(0, 1 - (px / boxW * 0.7 + py / boxH * 0.9));
-          const sheen = Math.pow(sheenT, 1.4) * 0.45;
+          // Liquid Glass Sheen: Specular light across the surface
+          const sheenT = Math.max(0, 1 - (px / size * 0.7 + py / size * 0.85));
+          const sheen = Math.pow(sheenT, 1.5) * 0.35;
           curR = curR * (1 - sheen) + 255 * sheen;
           curG = curG * (1 - sheen) + 255 * sheen;
           curB = curB * (1 - sheen) + 255 * sheen;
 
-          // Glass rim border
-          if (dBox > -2.5 * scale) {
-            const rimAlpha = Math.max(0, (2.5 * scale + dBox) / (2.5 * scale)) * 0.6;
-            const rimColor = py < boxY + boxH * 0.5 ? 255 : 200;
-            curR = curR * (1 - rimAlpha) + rimColor * rimAlpha;
-            curG = curG * (1 - rimAlpha) + rimColor * rimAlpha;
-            curB = curB * (1 - rimAlpha) + rimColor * rimAlpha;
+          // Soft Ambient Shadow under the strokes
+          let minTallyDist = 999;
+          for (let i = 0; i < strokes.length; i++) {
+            const s = strokes[i];
+            const d = distToSegment(px, py - 4 * scale, s.x1, s.y1, s.x2, s.y2) - s.w / 2;
+            if (d < minTallyDist) minTallyDist = d;
+          }
+          const dRedShadow = distToSegment(px, py - 4 * scale, redSlash.x1, redSlash.y1, redSlash.x2, redSlash.y2) - redSlash.w / 2;
+          if (dRedShadow < minTallyDist) minTallyDist = dRedShadow;
+
+          if (minTallyDist < 12 * scale && minTallyDist > 0) {
+            const shadowAlpha = (1 - minTallyDist / (12 * scale)) * 0.16;
+            curR = curR * (1 - shadowAlpha) + 60 * shadowAlpha;
+            curG = curG * (1 - shadowAlpha) + 38 * shadowAlpha;
+            curB = curB * (1 - shadowAlpha) + 20 * shadowAlpha;
           }
 
           // 4 Vertical Strokes
@@ -188,8 +145,8 @@ function renderIconPng(size) {
               curR = s.r;
               curG = s.g;
               curB = s.b;
-            } else if (d < 1.2 * scale) {
-              const edgeAlpha = 1 - d / (1.2 * scale);
+            } else if (d < 1.4 * scale) {
+              const edgeAlpha = 1 - d / (1.4 * scale);
               curR = curR * (1 - edgeAlpha) + s.r * edgeAlpha;
               curG = curG * (1 - edgeAlpha) + s.g * edgeAlpha;
               curB = curB * (1 - edgeAlpha) + s.b * edgeAlpha;
@@ -199,17 +156,20 @@ function renderIconPng(size) {
           // 5th Red Diagonal Slash
           const dRed = distToSegment(px, py, redSlash.x1, redSlash.y1, redSlash.x2, redSlash.y2) - redSlash.w / 2;
           if (dRed < 0) {
-            // Subtle liquid glass highlight on the red stroke
-            const redT = (px - redSlash.x1) / (redSlash.x2 - redSlash.x1);
             let rr = 220, rg = 38, rb = 38;
-            if (py < (redSlash.y1 + redSlash.y2) / 2) {
-              rr = Math.min(255, rr + 30);
+            // Specular glass highlight reflection along upper edge of red stroke
+            const distToUpperEdge = Math.abs(dRed + redSlash.w * 0.35);
+            if (distToUpperEdge < 3 * scale) {
+              const glassHighlight = (1 - distToUpperEdge / (3 * scale)) * 0.38;
+              rr = rr * (1 - glassHighlight) + 255 * glassHighlight;
+              rg = rg * (1 - glassHighlight) + 255 * glassHighlight;
+              rb = rb * (1 - glassHighlight) + 255 * glassHighlight;
             }
             curR = rr;
             curG = rg;
             curB = rb;
-          } else if (dRed < 1.4 * scale) {
-            const edgeAlpha = 1 - dRed / (1.4 * scale);
+          } else if (dRed < 1.6 * scale) {
+            const edgeAlpha = 1 - dRed / (1.6 * scale);
             curR = curR * (1 - edgeAlpha) + redSlash.r * edgeAlpha;
             curG = curG * (1 - edgeAlpha) + redSlash.g * edgeAlpha;
             curB = curB * (1 - edgeAlpha) + redSlash.b * edgeAlpha;
@@ -265,7 +225,7 @@ function renderIconPng(size) {
 }
 
 // Generate all standard target sizes
-console.log('Generating PNG icons...');
+console.log('Generating full-bleed PNG icons...');
 const icon180 = renderIconPng(180);
 fs.writeFileSync('apple-touch-icon.png', icon180);
 console.log('✓ apple-touch-icon.png (180x180) generated');
