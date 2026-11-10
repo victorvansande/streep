@@ -1389,11 +1389,11 @@ function renderStats() {
     const count = drinkTotals[d.id] || 0;
     html += `
       <div class="drink-pill-card">
-        <span class="drink-pill-icon">${d.icon}</span>
-        <div>
-          <div class="drink-pill-name">${d.name}</div>
-          <div class="drink-pill-price">${count}x geturfd (€${count})</div>
+        <div class="drink-pill-left">
+          <span class="drink-pill-icon">${d.icon}</span>
+          <span class="drink-pill-name">${d.name}</span>
         </div>
+        <span class="drink-pill-stats-count">${count}x geturfd (€ ${count},00)</span>
       </div>
     `;
   });
@@ -1820,7 +1820,7 @@ function openSelectUserModal() {
   const sorted = [...state.members].sort((a, b) => a.name.localeCompare(b.name));
   sorted.forEach(m => {
     html += `
-      <button class="keypad-btn" style="padding: 12px 8px; font-size: 15px; font-weight: 700; border-radius: 14px;" onclick="window.app.onSelectUserChoice('${m.id}')">
+      <button class="user-select-btn" onclick="window.app.onSelectUserChoice('${m.id}')">
         ${m.name}
       </button>
     `;
@@ -2006,12 +2006,12 @@ function openDrinkPicker(memberId) {
   (state.drinks || []).forEach(d => {
     html += `
       <div class="drink-pill-card" onclick="window.app.selectAndTallyDrink('${d.id}')">
-        <span class="drink-pill-icon">${d.icon}</span>
-        <div style="flex: 1; min-width: 0;">
-          <div class="drink-pill-name">${d.name}</div>
-          <div class="drink-pill-price">1 streep (€ 1,00)</div>
+        <div class="drink-pill-left">
+          <span class="drink-pill-icon">${d.icon}</span>
+          <span class="drink-pill-name">${d.name}</span>
+          <span class="drink-pill-price">• € 1,00</span>
         </div>
-        <span style="font-size: 11.5px; font-weight: 800; color: #b91c1c; margin-left: auto;">+1 ➜</span>
+        <span class="drink-pill-action-badge">+1 ➜</span>
       </div>
     `;
   });
@@ -2133,13 +2133,15 @@ function renderFavoritesModalGrid() {
   (state.drinks || []).forEach(d => {
     const isSelected = tempSelectedFavorites.includes(d.id);
     const orderIndex = tempSelectedFavorites.indexOf(d.id);
-    const orderTag = isSelected ? `<span class="fav-order-tag">⭐ #${orderIndex + 1}</span>` : '';
+    const orderTag = isSelected 
+      ? `<span class="fav-order-tag">⭐ #${orderIndex + 1} Favoriet</span>` 
+      : `<span class="fav-unselected-tag">+ Kies</span>`;
     html += `
       <div class="drink-pill-card ${isSelected ? 'fav-selected' : ''}" onclick="window.app.toggleFavoriteDrink('${d.id}')">
-        <span class="drink-pill-icon">${d.icon}</span>
-        <div style="flex: 1; min-width: 0;">
-          <div class="drink-pill-name">${d.name}</div>
-          <div class="drink-pill-price">1 streep (€ 1,00)</div>
+        <div class="drink-pill-left">
+          <span class="drink-pill-icon">${d.icon}</span>
+          <span class="drink-pill-name">${d.name}</span>
+          <span class="drink-pill-price">• € 1,00</span>
         </div>
         ${orderTag}
       </div>
@@ -2212,12 +2214,12 @@ function openChangeLastDrinkModal() {
     const isCurrent = d.id === lastTallyRecord.drinkId;
     html += `
       <div class="drink-pill-card ${isCurrent ? 'current-drink' : ''}" onclick="window.app.changeLastTallyDrink('${d.id}')">
-        <span class="drink-pill-icon">${d.icon}</span>
-        <div style="flex: 1; min-width: 0;">
-          <div class="drink-pill-name">${d.name}</div>
-          <div class="drink-pill-price">1 streep (€ 1,00)</div>
+        <div class="drink-pill-left">
+          <span class="drink-pill-icon">${d.icon}</span>
+          <span class="drink-pill-name">${d.name}</span>
+          <span class="drink-pill-price">• € 1,00</span>
         </div>
-        ${isCurrent ? '<span style="font-size: 10.5px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a; padding: 2px 7px; border-radius: 999px; font-weight: 800; margin-left: auto;">Huidig</span>' : '<span style="font-size: 11px; color: #059669; font-weight: 700; margin-left: auto;">Kies ➜</span>'}
+        ${isCurrent ? '<span class="fav-current-tag">Huidig</span>' : '<span class="fav-unselected-tag">Kies ➜</span>'}
       </div>
     `;
   });

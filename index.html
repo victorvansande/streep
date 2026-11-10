@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <script>
     // Force cache bust if new version released (e.g. homescreen / Safari cache)
-    const APP_BUILD_VERSION = '5.4';
+    const APP_BUILD_VERSION = '5.5';
     try {
       const saved = localStorage.getItem('ksa_app_build_version');
       if (saved !== APP_BUILD_VERSION) {
@@ -24,13 +24,13 @@
     } catch (e) {}
   </script>
   <!-- Favicon & Touch Icons for iOS and Android -->
-  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=5.4">
-  <link rel="alternate icon" type="image/png" href="./favicon.png?v=5.4">
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=5.4">
-  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=5.4">
-  <link rel="apple-touch-icon-precomposed" href="./apple-touch-icon.png?v=5.4">
-  <link rel="manifest" href="./manifest.json?v=5.4">
-  <link rel="stylesheet" href="./style.css?v=5.4">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=5.5">
+  <link rel="alternate icon" type="image/png" href="./favicon.png?v=5.5">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=5.5">
+  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=5.5">
+  <link rel="apple-touch-icon-precomposed" href="./apple-touch-icon.png?v=5.5">
+  <link rel="manifest" href="./manifest.json?v=5.5">
+  <link rel="stylesheet" href="./style.css?v=5.5">
   <!-- jsPDF and autoTable for instant PDF downloads (deferred for maximum page speed) -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -450,7 +450,7 @@
 
       <div class="pin-prompt-box" style="margin-bottom: 10px;">
         <div class="pin-user-label" id="drinkTargetName">...</div>
-        <div class="pin-sub-label">Elk drankje kost 1 streepje (= € 1,00)</div>
+        <div class="pin-sub-label">1 streepje = € 1,00</div>
       </div>
 
       <div class="sheet-scroll-body">
@@ -476,7 +476,7 @@
 
       <div class="pin-prompt-box" style="margin-bottom: 10px;">
         <div class="pin-user-label" id="favTargetUserName">Kies jouw favorieten</div>
-        <div class="pin-sub-label">Selecteer 3 drankjes die altijd groot bovenaan staan om in 1 tik te turven.</div>
+        <div class="pin-sub-label">Kies 3 drankjes voor de snelle turfknoppen bovenaan.</div>
       </div>
 
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 0 4px;">
@@ -508,7 +508,7 @@
       <div class="pin-prompt-box" style="margin-bottom: 10px; background: #fff8ec; border-color: #f59e0b;">
         <div class="pin-user-label" id="changeDrinkTargetName">...</div>
         <div class="pin-sub-label" style="color: #92400e;">
-          <strong>Let op:</strong> Aantal strepen blijft gelijk! Tik op het drankje dat het had moeten zijn:
+          Aantal strepen blijft gelijk. Tik op het juiste drankje:
         </div>
       </div>
 
@@ -524,6 +524,6 @@
     <span id="toastText">Streepje getrokken!</span>
   </div>
 
-  <script defer src="./app.js?v=5.4"></script>
+  <script defer src="./app.js?v=5.5"></script>
 </body>
 </html>
