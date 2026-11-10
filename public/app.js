@@ -709,10 +709,11 @@ function applySyncEvent(ev, isLocalOrigin = false) {
   return stateChanged;
 }
 
-// --- LIVE MULTI-BROKER REALTIME CLOUD ENGINE (HiveMQ + EMQX Ultra-Fast WSS) ---
+// --- LIVE MULTI-BROKER REALTIME CLOUD ENGINE (Mosquitto + EMQX + HiveMQ Ultra-Fast WSS) ---
 const MQTT_BROKERS = [
-  'wss://broker.hivemq.com:8884/mqtt',
-  'wss://broker.emqx.io:8084/mqtt'
+  'wss://test.mosquitto.org:8081/mqtt',
+  'wss://broker.emqx.io:8084/mqtt',
+  'wss://broker.hivemq.com:8884/mqtt'
 ];
 const MQTT_BASE_TOPIC = 'ksa/streep/2026/victorvansande';
 const TOPIC_EVENTS = `${MQTT_BASE_TOPIC}/events`;
@@ -1118,15 +1119,30 @@ function connectCloudSync() {
       mqttClient = null;
     }
 
+    let connectionEstablished = false;
+    let connectWatchdog = setTimeout(() => {
+      if (!connectionEstablished) {
+        console.warn('MQTT handshake watchdog timeout op broker:', brokerUrl);
+        isConnecting = false;
+        try { mqttClient.end(true); } catch (e) {}
+        mqttClient = null;
+        currentBrokerIdx = (currentBrokerIdx + 1) % MQTT_BROKERS.length;
+        updateCloudStatus('connecting', 'Verbinding herstellen...');
+        setTimeout(connectCloudSync, 200);
+      }
+    }, 2800);
+
     mqttClient = window.mqtt.connect(brokerUrl, {
       clientId: myClientId,
       clean: true,
-      connectTimeout: 2800,
-      reconnectPeriod: 1200,
+      connectTimeout: 2500,
+      reconnectPeriod: 0,
       keepalive: 25
     });
 
     mqttClient.on('connect', () => {
+      clearTimeout(connectWatchdog);
+      connectionEstablished = true;
       isConnecting = false;
       updateCloudStatus('connected', 'Live verbonden');
 
@@ -1166,6 +1182,7 @@ function connectCloudSync() {
     });
 
     mqttClient.on('error', (err) => {
+      clearTimeout(connectWatchdog);
       console.warn('MQTT fout op broker:', brokerUrl, err);
       isConnecting = false;
       try { mqttClient.end(true); } catch (e) {}
@@ -1173,7 +1190,7 @@ function connectCloudSync() {
       // Schakel direct over naar de alternatieve broker
       currentBrokerIdx = (currentBrokerIdx + 1) % MQTT_BROKERS.length;
       updateCloudStatus('connecting', 'Verbinding herstellen...');
-      setTimeout(connectCloudSync, 400);
+      setTimeout(connectCloudSync, 250);
     });
 
     mqttClient.on('offline', () => {
@@ -1182,9 +1199,22 @@ function connectCloudSync() {
     });
 
     mqttClient.on('close', () => {
+      clearTimeout(connectWatchdog);
       isConnecting = false;
-      if (!isLiveConnected()) {
-        updateCloudStatus(!navigator.onLine ? 'offline' : 'connecting');
+      if (!connectionEstablished) {
+        console.warn('MQTT handshake mislukt op broker:', brokerUrl);
+        try { mqttClient.end(true); } catch (e) {}
+        mqttClient = null;
+        currentBrokerIdx = (currentBrokerIdx + 1) % MQTT_BROKERS.length;
+        updateCloudStatus('connecting', 'Verbinding herstellen...');
+        setTimeout(connectCloudSync, 250);
+      } else {
+        if (!isLiveConnected()) {
+          updateCloudStatus(!navigator.onLine ? 'offline' : 'connecting');
+        }
+        try { mqttClient.end(true); } catch (e) {}
+        mqttClient = null;
+        setTimeout(connectCloudSync, 800);
       }
     });
 
