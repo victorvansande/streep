@@ -49,7 +49,10 @@ let state = {
   totalTallies: 0,
   totalEuros: 0,
   pricePerTally: 1.0,
-  title: 'Karton Najaar 2026'
+  title: 'Karton Najaar 2026',
+  kartonEpoch: 0,
+  updatedAt: 0,
+  version: 1
 };
 
 const processedEventIds = new Set();
@@ -417,9 +420,35 @@ function saveLocalState() {
   try {
     const serialized = JSON.stringify(state);
     localStorage.setItem('ksa_streep_karton_cache', serialized);
-    // Veiligheidsreserve: bewaar altijd een permanente rollende backup zodra er streepjes zijn
+
+    // Veiligheidsreserve 1: permanente rollende backup zodra er streepjes zijn
     if (state.totalTallies > 0) {
       localStorage.setItem('ksa_streep_safety_backup', serialized);
+    }
+
+    // Veiligheidsreserve 2 (Monotone CRDT kluis): bewaart het hoogste aantal streepjes ooit gezien
+    // binnen de huidige karton-epoch. Deze backup kan NOOIT krimpen door een crash of verouderde peer!
+    const existingHighestRaw = localStorage.getItem('ksa_streep_highest_backup');
+    if (existingHighestRaw) {
+      try {
+        const existingHighest = JSON.parse(existingHighestRaw);
+        const existingEpoch = Number(existingHighest.kartonEpoch) || 0;
+        const currentEpoch = Number(state.kartonEpoch) || 0;
+
+        if (currentEpoch > existingEpoch) {
+          // Nieuwe epoch (nieuw karton gestart door admin)
+          localStorage.setItem('ksa_streep_highest_backup', serialized);
+        } else if (currentEpoch === existingEpoch) {
+          const highestTotal = existingHighest.totalTallies || 0;
+          if ((state.totalTallies || 0) >= highestTotal) {
+            localStorage.setItem('ksa_streep_highest_backup', serialized);
+          }
+        }
+      } catch (e) {
+        localStorage.setItem('ksa_streep_highest_backup', serialized);
+      }
+    } else if (state.totalTallies > 0) {
+      localStorage.setItem('ksa_streep_highest_backup', serialized);
     }
   } catch (e) {}
 }
@@ -427,57 +456,74 @@ function saveLocalState() {
 function loadLocalState() {
   try {
     let raw = localStorage.getItem('ksa_streep_karton_cache');
-    // Als de hoofdcache leeg zou zijn geraakt, herstel direct uit de veiligheidsreserve
-    if (!raw) {
-      raw = localStorage.getItem('ksa_streep_safety_backup');
-    }
+    let safetyRaw = localStorage.getItem('ksa_streep_safety_backup');
+    let highestRaw = localStorage.getItem('ksa_streep_highest_backup');
 
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.members && parsed.members.length > 0) {
-        // Slimme merge: behoud ALTIJD alle bestaande live strepen, drankentellingen en pincodes
-        const existingMembersMap = new Map();
-        parsed.members.forEach(m => existingMembersMap.set(m.id, m));
+    // Kies de rijkste lokale backup (met de meeste streepjes binnen de recentste epoch)
+    let candidate = null;
+    let highestCount = -1;
 
-        const mergedMembers = [];
-        DEFAULT_MEMBERS.forEach(defM => {
-          if (existingMembersMap.has(defM.id)) {
-            const existing = existingMembersMap.get(defM.id);
-            mergedMembers.push({
-              ...defM,
-              ...existing,
-              tallies: existing.tallies || 0,
-              drinks: existing.drinks || {},
-              hasPin: existing.hasPin || false,
-              pinHash: existing.pinHash || null
-            });
-            existingMembersMap.delete(defM.id);
-          } else {
-            // Nieuw toegevoegd lid in de code
-            mergedMembers.push({ ...defM });
+    [raw, safetyRaw, highestRaw].forEach(itemStr => {
+      if (!itemStr) return;
+      try {
+        const parsed = JSON.parse(itemStr);
+        if (parsed && Array.isArray(parsed.members)) {
+          const tot = parsed.members.reduce((sum, m) => sum + (m.tallies || 0), 0);
+          const epoch = Number(parsed.kartonEpoch) || 0;
+          if (!candidate || epoch > (candidate.kartonEpoch || 0) || (epoch === (candidate.kartonEpoch || 0) && tot > highestCount)) {
+            candidate = parsed;
+            highestCount = tot;
           }
-        });
+        }
+      } catch (e) {}
+    });
 
-        // Behoud alle dynamisch toegevoegde bezoekers tijdens het kamp/jaar
-        existingMembersMap.forEach(extraM => {
-          mergedMembers.push(extraM);
-        });
+    if (candidate && candidate.members && candidate.members.length > 0) {
+      // Slimme merge: behoud ALTIJD alle bestaande live strepen, drankentellingen en pincodes
+      const existingMembersMap = new Map();
+      candidate.members.forEach(m => existingMembersMap.set(m.id, m));
 
-        state = {
-          ...parsed,
-          members: mergedMembers,
-          drinks: parsed.drinks && parsed.drinks.length > 0 ? parsed.drinks : DEFAULT_DRINKS
-        };
+      const mergedMembers = [];
+      DEFAULT_MEMBERS.forEach(defM => {
+        if (existingMembersMap.has(defM.id)) {
+          const existing = existingMembersMap.get(defM.id);
+          mergedMembers.push({
+            ...defM,
+            ...existing,
+            tallies: existing.tallies || 0,
+            drinks: existing.drinks || {},
+            hasPin: existing.hasPin || false,
+            pinHash: existing.pinHash || null,
+            adminOverrideAt: existing.adminOverrideAt || 0,
+            lastTallyAt: existing.lastTallyAt || 0
+          });
+          existingMembersMap.delete(defM.id);
+        } else {
+          // Nieuw toegevoegd lid in de code
+          mergedMembers.push({ ...defM });
+        }
+      });
 
-        // Zorg dat alle standaarddrankjes aanwezig blijven
-        DEFAULT_DRINKS.forEach(d => {
-          if (!state.drinks.some(sd => sd.id === d.id)) {
-            state.drinks.push(d);
-          }
-        });
+      // Behoud alle dynamisch toegevoegde bezoekers tijdens het kamp/jaar
+      existingMembersMap.forEach(extraM => {
+        mergedMembers.push(extraM);
+      });
 
-        recalculateState();
-      }
+      state = {
+        ...candidate,
+        members: mergedMembers,
+        drinks: candidate.drinks && candidate.drinks.length > 0 ? candidate.drinks : DEFAULT_DRINKS,
+        kartonEpoch: Number(candidate.kartonEpoch) || 0
+      };
+
+      // Zorg dat alle standaarddrankjes aanwezig blijven
+      DEFAULT_DRINKS.forEach(d => {
+        if (!state.drinks.some(sd => sd.id === d.id)) {
+          state.drinks.push(d);
+        }
+      });
+
+      recalculateState();
     }
   } catch (e) {
     console.warn('Fout bij laden van lokale data:', e);
@@ -538,6 +584,10 @@ function applySyncEvent(ev, isLocalOrigin = false) {
         if (!member.drinks) member.drinks = {};
         const drinkId = ev.drinkId || 'pintje';
         member.drinks[drinkId] = Math.max(0, (member.drinks[drinkId] || 0) + count);
+        member.lastTallyAt = ev.timestamp || Date.now();
+        if (ev.adminOverrideAt) {
+          member.adminOverrideAt = ev.adminOverrideAt;
+        }
         stateChanged = true;
         if (!isLocalOrigin) playMarkerSound(count);
       }
@@ -581,6 +631,7 @@ function applySyncEvent(ev, isLocalOrigin = false) {
       const member = state.members.find(m => m.id === ev.memberId);
       if (member) {
         member.tallies = Math.max(0, ev.tallies);
+        member.adminOverrideAt = ev.adminOverrideAt || ev.timestamp || Date.now();
         stateChanged = true;
       }
       break;
@@ -598,19 +649,33 @@ function applySyncEvent(ev, isLocalOrigin = false) {
       break;
     }
     case 'clear_all': {
+      const newEpoch = ev.kartonEpoch || ev.timestamp || Date.now();
+      state.kartonEpoch = newEpoch;
       state.members.forEach(m => {
         m.tallies = 0;
         m.drinks = {};
+        delete m.adminOverrideAt;
+        delete m.lastTallyAt;
       });
+      try {
+        localStorage.removeItem('ksa_streep_highest_backup');
+      } catch (e) {}
       stateChanged = true;
       break;
     }
     case 'new_karton': {
+      const newEpoch = ev.kartonEpoch || ev.timestamp || Date.now();
+      state.kartonEpoch = newEpoch;
       state.title = ev.title || state.title;
       state.members.forEach(m => {
         m.tallies = 0;
         m.drinks = {};
+        delete m.adminOverrideAt;
+        delete m.lastTallyAt;
       });
+      try {
+        localStorage.removeItem('ksa_streep_highest_backup');
+      } catch (e) {}
       stateChanged = true;
       break;
     }
@@ -793,9 +858,21 @@ function broadcastStateRequest() {
 
 function publishCurrentStateSnapshot() {
   if (mqttClient && mqttClient.connected) {
+    // CRITICAL GUARD: Lege of niet-geïnitialiseerde clients mogen NOOIT een retained snapshot overschrijven!
+    if ((!state.totalTallies || state.totalTallies <= 0) && (!state.kartonEpoch || state.kartonEpoch === 0)) {
+      return;
+    }
     try {
       const snapshot = {
-        state: state,
+        state: {
+          members: state.members,
+          drinks: state.drinks,
+          title: state.title,
+          pricePerTally: state.pricePerTally,
+          kartonEpoch: state.kartonEpoch || 0,
+          totalTallies: state.totalTallies || 0,
+          updatedAt: state.updatedAt || Date.now()
+        },
         sender: (activeUser && activeUser.name) ? activeUser.name : 'Leiding',
         from: myClientId,
         timestamp: Date.now(),
@@ -811,29 +888,115 @@ function handleIncomingStateSnapshot(snapshot) {
   if (snapshot.from === myClientId) return; // Eigen snapshot negeren
 
   const remoteState = snapshot.state;
-  const remoteTime = snapshot.timestamp || 0;
-  const localTime = state.updatedAt || 0;
-  const pendingOutbox = getOutbox();
+  const remoteEpoch = Number(remoteState.kartonEpoch) || 0;
+  const localEpoch = Number(state.kartonEpoch) || 0;
 
-  // Als remote nieuwer is OF lokaal geen niet-verzonden wijzigingen heeft: overnemen!
-  // Hierdoor worden resets (0 strepen) en correcties (-1) van de admin DIRECT gesynchroniseerd!
-  if (remoteTime >= localTime || pendingOutbox.length === 0) {
+  // 1. Controleer Karton Epoch (bescherming tegen oude kartons na wisactie of reset)
+  if (remoteEpoch < localEpoch) {
+    // Inkomend snapshot komt van een vorig karton dat al gereset is door de admin!
+    // Negeer deze volledig en stuur direct onze nieuwere stand terug om het toestel bij te werken.
+    publishCurrentStateSnapshot();
+    return;
+  }
+
+  let stateChanged = false;
+
+  if (remoteEpoch > localEpoch) {
+    // Een admin heeft een nieuw karton of wis-actie gestart op een ander apparaat!
+    state.kartonEpoch = remoteEpoch;
+    state.title = remoteState.title || state.title;
     state.members = JSON.parse(JSON.stringify(remoteState.members));
     if (remoteState.drinks) state.drinks = remoteState.drinks;
-    if (remoteState.title) state.title = remoteState.title;
-    state.updatedAt = remoteTime;
-    state.version = snapshot.version || ((state.version || 0) + 1);
+    stateChanged = true;
+  } else {
+    // ZELFDE EPOCH: Strikte monotone CRDT-merge!
+    // Streepjes kunnen NOOIT zomaar verminderen door een inkomende peer-snapshot.
+    const remoteMembersMap = new Map();
+    remoteState.members.forEach(rm => remoteMembersMap.set(rm.id, rm));
 
-    // Als deze GSM offline streepjes had getrokken die nog in de wachtrij staan:
-    // Herpas ze direct toe op de nieuwste stand en verzend ze meteen!
-    if (pendingOutbox.length > 0) {
-      pendingOutbox.forEach(ev => {
-        applySyncEvent(ev, true);
+    state.members.forEach(localM => {
+      const remoteM = remoteMembersMap.get(localM.id);
+      if (!remoteM) return;
+
+      // Controleer of admin expliciet strepen heeft gewijzigd via het adminpaneel
+      const remoteAdminAt = remoteM.adminOverrideAt || 0;
+      const localAdminAt = localM.adminOverrideAt || 0;
+
+      if (remoteAdminAt > localAdminAt) {
+        // Admin heeft bewust streepjes aangepast op een ander toestel
+        if (localM.tallies !== remoteM.tallies) {
+          localM.tallies = remoteM.tallies;
+          localM.adminOverrideAt = remoteAdminAt;
+          stateChanged = true;
+        }
+      } else if (localAdminAt > remoteAdminAt) {
+        // Lokaal heeft een recentere admin-correctie, behoud lokaal
+      } else {
+        // Normale werking: wiskundig monotoon (Math.max)
+        // Een peer kan NOOIT strepen wissen of verminderen!
+        const maxTallies = Math.max(localM.tallies || 0, remoteM.tallies || 0);
+        if (localM.tallies !== maxTallies) {
+          localM.tallies = maxTallies;
+          stateChanged = true;
+        }
+      }
+
+      // Voeg drankentellingen monotoon samen
+      if (!localM.drinks) localM.drinks = {};
+      if (remoteM.drinks && typeof remoteM.drinks === 'object') {
+        Object.keys(remoteM.drinks).forEach(dId => {
+          const rCount = remoteM.drinks[dId] || 0;
+          const lCount = localM.drinks[dId] || 0;
+          if (rCount > lCount) {
+            localM.drinks[dId] = rCount;
+            stateChanged = true;
+          }
+        });
+      }
+
+      // PIN-beveiliging synchroniseren als ingesteld
+      if (remoteM.hasPin && remoteM.pinHash && !localM.hasPin) {
+        localM.hasPin = true;
+        localM.pinHash = remoteM.pinHash;
+        stateChanged = true;
+      }
+    });
+
+    // Dynamisch toegevoegde personen op het andere toestel
+    remoteState.members.forEach(remoteM => {
+      if (!state.members.some(lm => lm.id === remoteM.id)) {
+        state.members.push(JSON.parse(JSON.stringify(remoteM)));
+        stateChanged = true;
+      }
+    });
+
+    // Drankenlijst synchroniseren
+    if (remoteState.drinks && Array.isArray(remoteState.drinks)) {
+      remoteState.drinks.forEach(rd => {
+        if (!state.drinks.some(ld => ld.id === rd.id)) {
+          state.drinks.push(rd);
+          stateChanged = true;
+        }
       });
-      flushOutbox();
     }
+  }
 
-    recalculateState();
+  // Als dit apparaat offline strepen had getrokken in de wachtrij:
+  // Pas deze opnieuw toe bovenop de gemergede stand!
+  const pendingOutbox = getOutbox();
+  if (pendingOutbox.length > 0) {
+    pendingOutbox.forEach(ev => {
+      applySyncEvent(ev, true);
+    });
+    flushOutbox();
+    stateChanged = true;
+  }
+
+  recalculateState();
+
+  if (stateChanged) {
+    state.updatedAt = Math.max(state.updatedAt || 0, snapshot.timestamp || 0);
+    state.version = Math.max(state.version || 0, snapshot.version || 0) + 1;
     saveLocalState();
     renderMembers();
     renderStats();
@@ -841,6 +1004,15 @@ function handleIncomingStateSnapshot(snapshot) {
     renderAdminMemberList();
     renderMiniLeaderboard();
     updateMyQuickBanner();
+  }
+
+  // Wederzijdse inhaalsynchronisatie:
+  // Als onze lokale stand méér strepen heeft dan het inkomende snapshot,
+  // publiceren we direct onze hogere stand zodat de broker en andere apparaten
+  // onmiddellijk worden bijgewerkt naar de hoogste stand!
+  const incomingTotal = remoteState.totalTallies || remoteState.members.reduce((s, m) => s + (m.tallies || 0), 0);
+  if (state.totalTallies > incomingTotal) {
+    publishCurrentStateSnapshot();
   }
 }
 
@@ -979,7 +1151,13 @@ function connectCloudSync() {
           handleIncomingStateSnapshot(data);
         } else if (topic === TOPIC_REQ) {
           if (data && data.from !== myClientId) {
-            publishCurrentStateSnapshot();
+            // Beantwoord enkel als dit toestel daadwerkelijk actieve strepen heeft
+            if (state.totalTallies > 0) {
+              // Voeg kleine jitter toe (120-350ms) zodat niet alle telefoons gelijktijdig zenden
+              setTimeout(() => {
+                publishCurrentStateSnapshot();
+              }, 120 + Math.floor(Math.random() * 230));
+            }
           }
         }
       } catch (err) {
@@ -1433,6 +1611,7 @@ function importBackupJson(file) {
       if (!confirm(`Weet je zeker dat je deze backup wil herstellen? (${importedState.members.length} personen, ${importedState.totalTallies || 0} strepen)`)) {
         return;
       }
+      importedState.kartonEpoch = Date.now();
       state = importedState;
       recalculateState();
       saveLocalState();
@@ -1576,11 +1755,13 @@ window.app = {
   adminTally: async (memberId, count) => {
     if (!adminPassword) return;
     const currentDrink = getSelectedDrink();
+    const isCorrection = count < 0;
     publishCloudEvent({
       type: 'tally',
       memberId,
       count,
-      drinkId: currentDrink.id
+      drinkId: currentDrink.id,
+      adminOverrideAt: isCorrection ? Date.now() : undefined
     });
     playMarkerSound(count);
     triggerHaptic('heavy');
@@ -1607,7 +1788,8 @@ window.app = {
     publishCloudEvent({
       type: 'set_tallies',
       memberId,
-      tallies: count
+      tallies: count,
+      adminOverrideAt: Date.now()
     });
     showToast('Strepen aangepast!', '✏️');
   },
@@ -2396,7 +2578,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const confirmation = prompt('Typ "WIS ALLES" om te bevestigen dat je alle strepen naar 0 wil resetten:');
     if (confirmation !== 'WIS ALLES') return;
 
-    publishCloudEvent({ type: 'clear_all' });
+    publishCloudEvent({ type: 'clear_all', kartonEpoch: Date.now() });
     showToast('Alle streepjes gewist naar 0! 🗑️', '🗑️');
   });
 
@@ -2484,7 +2666,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!title) return;
     if (!confirm('Huidig karton archiveren en alle streepjes resetten naar 0?')) return;
 
-    publishCloudEvent({ type: 'new_karton', title });
+    publishCloudEvent({ type: 'new_karton', title, kartonEpoch: Date.now() });
     showToast('Nieuw karton gestart!', '📦');
     document.querySelector('.nav-tab-btn[data-tab="tabKarton"]').click();
   });
