@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <script>
     // Force cache bust if new version released (e.g. homescreen / Safari cache)
-    const APP_BUILD_VERSION = '5.3';
+    const APP_BUILD_VERSION = '5.4';
     try {
       const saved = localStorage.getItem('ksa_app_build_version');
       if (saved !== APP_BUILD_VERSION) {
@@ -24,13 +24,13 @@
     } catch (e) {}
   </script>
   <!-- Favicon & Touch Icons for iOS and Android -->
-  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=5.3">
-  <link rel="alternate icon" type="image/png" href="./favicon.png?v=5.3">
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=5.3">
-  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=5.3">
-  <link rel="apple-touch-icon-precomposed" href="./apple-touch-icon.png?v=5.3">
-  <link rel="manifest" href="./manifest.json?v=5.3">
-  <link rel="stylesheet" href="./style.css?v=5.3">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=5.4">
+  <link rel="alternate icon" type="image/png" href="./favicon.png?v=5.4">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=5.4">
+  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=5.4">
+  <link rel="apple-touch-icon-precomposed" href="./apple-touch-icon.png?v=5.4">
+  <link rel="manifest" href="./manifest.json?v=5.4">
+  <link rel="stylesheet" href="./style.css?v=5.4">
   <!-- jsPDF and autoTable for instant PDF downloads (deferred for maximum page speed) -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -65,12 +65,12 @@
   </div>
 
   <!-- Live Status Pill -->
-  <div id="cloudSyncBanner" style="display: flex; background: #ecfdf5; border: 1.5px solid #a7f3d0; border-radius: 999px; margin: 6px auto; max-width: 580px; padding: 4px 12px; font-size: 11px; color: #047857; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); white-space: nowrap;">
-    <span style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;">
+  <div class="cloud-sync-banner" id="cloudSyncBanner">
+    <span style="display: flex; align-items: center; gap: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;">
       <span class="live-pulse-dot" id="cloudSyncDot"></span>
       <strong id="cloudSyncText" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Verbinding controleren...</strong>
     </span>
-    <span id="cloudSyncSub" style="font-size: 10px; font-weight: 700; color: #059669; white-space: nowrap; flex-shrink: 0; margin-left: 6px;">Live</span>
+    <span id="cloudSyncSub" style="font-size: 11px; font-weight: 800; color: #059669; white-space: nowrap; flex-shrink: 0; margin-left: 6px;">Live</span>
   </div>
 
   <!-- Main Board View -->
@@ -176,7 +176,7 @@
       </div>
 
       <!-- Afrekening & PDF Export (Exclusief voor Admin) -->
-      <div style="background: #fffdf9; border: 1.5px solid #d8c2a7; border-radius: 18px; padding: 14px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.03);">
+      <div class="admin-card-section">
         <h4 style="font-size: 15px; font-weight: 800; margin-bottom: 4px; color: #291a0e; display: flex; align-items: center; gap: 6px;">
           <span>💰</span> Afrekening &amp; Verrekening
         </h4>
@@ -187,17 +187,17 @@
         </button>
 
         <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-          <button class="btn-pill-secondary" id="btnAdminExportJson" style="flex: 1; padding: 9px 8px; font-size: 12px; border-radius: 999px;" title="Download een complete data-kopie van alle strepen">
+          <button class="btn-pill-secondary" id="btnAdminExportJson" style="flex: 1; padding: 9px 8px; font-size: 12px;" title="Download een complete data-kopie van alle strepen">
             💾 Download Backup
           </button>
-          <button class="btn-pill-secondary" id="btnAdminImportJson" style="flex: 1; padding: 9px 8px; font-size: 12px; border-radius: 999px;" title="Herstel een eerdere data-kopie">
+          <button class="btn-pill-secondary" id="btnAdminImportJson" style="flex: 1; padding: 9px 8px; font-size: 12px;" title="Herstel een eerdere data-kopie">
             📥 Herstel Backup
           </button>
           <input type="file" id="fileImportJson" accept=".json" style="display: none;">
         </div>
 
         <div style="font-size: 12px; font-weight: 700; color: #5a4025; margin-bottom: 6px;">Overzicht per leiding / bezoeker:</div>
-        <div id="settleList" style="background: #faf4eb; border: 1px solid #e0cdb6; border-radius: 14px; max-height: 35vh; overflow-y: auto; padding: 4px 10px; margin-bottom: 12px;"></div>
+        <div id="settleList" class="settle-scroll-box"></div>
 
         <div style="border-top: 1px dashed #ceb799; padding-top: 10px;">
           <p style="font-size: 11.5px; color: #705b45; margin-bottom: 6px;">Nieuwe periode starten? Alle tellers gaan naar 0 en het vorig karton wordt gereset.</p>
@@ -208,7 +208,7 @@
       </div>
 
       <!-- Pincodes Resetten -->
-      <div style="background: #fffbeb; border: 1.5px solid #f59e0b; border-radius: 18px; padding: 14px; margin-bottom: 16px;">
+      <div class="admin-card-warning">
         <strong style="font-size: 13px; color: #b45309; display: block; margin-bottom: 4px;">🔑 Alle Pincodes Resetten</strong>
         <p style="font-size: 11px; color: #92400e; margin-bottom: 8px;">Wis de pincode van iedereen zodat alle leiding en bezoekers verplicht opnieuw een eigen 4-cijferige pincode moeten instellen bij hun volgende streepje.</p>
         <button class="btn-primary-action" id="btnAdminResetAllPins" style="background: #d97706; box-shadow: 0 2px 0 #b45309; padding: 10px; font-size: 13px; margin: 0; width: 100%;">
@@ -217,7 +217,7 @@
       </div>
 
       <!-- Strepen Wissen -->
-      <div style="background: #fff5f5; border: 1.5px solid #f87171; border-radius: 18px; padding: 14px; margin-bottom: 16px;">
+      <div class="admin-card-danger">
         <strong style="font-size: 13px; color: #991b1b; display: block; margin-bottom: 4px;">⚠️ Strepen Wissen</strong>
         <p style="font-size: 11px; color: #7f1d1d; margin-bottom: 8px;">Zet alle streepjes van iedereen in 1 klik op 0.</p>
         <button class="btn-reset-karton" id="btnAdminClearAll" style="padding: 10px; font-size: 13px; margin: 0;">
@@ -226,7 +226,7 @@
       </div>
 
       <!-- Leden & Bezoekers Beheren (Streepjes corrigeren / aftrekken) -->
-      <div style="background: #fffdf9; border: 1.5px solid #d8c2a7; border-radius: 18px; padding: 14px; margin-bottom: 16px;">
+      <div class="admin-card-section">
         <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
           <h4 style="font-size: 14px; font-weight: 800; color: #291a0e;">👥 Leden &amp; Streepjes Corrigeren</h4>
           <span style="font-size: 10.5px; color: #b91c1c; font-weight: 700;">Tik op -1 om streepje te wissen</span>
@@ -524,6 +524,6 @@
     <span id="toastText">Streepje getrokken!</span>
   </div>
 
-  <script defer src="./app.js?v=5.3"></script>
+  <script defer src="./app.js?v=5.4"></script>
 </body>
 </html>
