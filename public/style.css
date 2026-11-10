@@ -234,7 +234,201 @@ body {
   flex-shrink: 0;
 }
 
-/* Modern Pill-Style Quick Actions */
+/* 3 Favorite Quick Action Drinks Grid (1-Tap Fast Tally) */
+.my-fav-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.btn-fav-drink {
+  background: linear-gradient(145deg, #fffdfa 0%, #f6ecdf 100%);
+  border: 1.5px solid #d8c3a5;
+  border-radius: 18px;
+  padding: 10px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(70, 45, 20, 0.05);
+  transition: transform 0.1s ease, box-shadow 0.1s ease, border-color 0.15s ease;
+  position: relative;
+  overflow: hidden;
+  min-height: 70px;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-fav-drink:active {
+  transform: scale(0.95);
+  background: #ebdcc9;
+  box-shadow: 0 1px 2px rgba(70, 45, 20, 0.1);
+}
+
+.btn-fav-drink.fav-highlight {
+  background: linear-gradient(145deg, #fffbeb 0%, #fef3c7 100%);
+  border-color: #f59e0b;
+  box-shadow: 0 3px 10px rgba(245, 158, 11, 0.18);
+}
+.btn-fav-drink.fav-highlight:active {
+  background: #fde68a;
+}
+
+.fav-drink-icon {
+  font-size: 26px;
+  line-height: 1;
+  display: block;
+  transition: transform 0.1s ease;
+}
+.btn-fav-drink:active .fav-drink-icon {
+  transform: scale(1.15);
+}
+
+.fav-drink-meta {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+}
+
+.fav-drink-plus {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--primary-accent);
+}
+
+.fav-drink-name {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #291a0e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 74px;
+  line-height: 1.15;
+}
+
+/* Subrow under favorites: Other drinks + Edit favorites */
+.my-fav-subrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.btn-subrow-pill {
+  flex: 1;
+  background: #f7eee2;
+  border: 1.5px solid #caa881;
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #5f3e1d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.btn-subrow-pill:active {
+  background: #eeddc9;
+  transform: scale(0.97);
+}
+
+.btn-subrow-fav-edit {
+  background: #fffdf9;
+  border: 1.5px solid #caa881;
+  border-radius: 999px;
+  padding: 7px 11px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #8c6a46;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.btn-subrow-fav-edit:active {
+  background: #fef3c7;
+  color: #b45309;
+  transform: scale(0.97);
+}
+
+/* 1-Minute Last Tally Correction Bar */
+.last-tally-bar {
+  background: #fff8ec;
+  border: 1.5px solid #f59e0b;
+  border-radius: 14px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  animation: slideDownFade 0.25s ease;
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.1);
+}
+@keyframes slideDownFade {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.last-tally-info {
+  font-size: 12px;
+  color: #78350f;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.last-tally-info strong {
+  color: #92400e;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.last-tally-timer {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #b45309;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  padding: 1.5px 6px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn-change-last-drink {
+  background: #b45309;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(180, 83, 9, 0.3);
+  transition: transform 0.1s ease, background 0.15s ease;
+}
+.btn-change-last-drink:active {
+  transform: scale(0.94);
+  background: #92400e;
+}
+
+/* Modern Pill-Style Quick Actions (Legacy fallbacks) */
 .my-action-row {
   display: block;
   margin-bottom: 8px;
@@ -945,6 +1139,37 @@ body {
   box-shadow: 0 2px 8px rgba(185, 28, 28, 0.15);
 }
 
+.drink-pill-card.fav-selected {
+  border-color: #f59e0b;
+  background: #fffbeb;
+  box-shadow: 0 3px 10px rgba(245, 158, 11, 0.2);
+}
+
+.drink-pill-card.current-drink {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.fav-count-badge {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.fav-order-tag {
+  background: #f59e0b;
+  color: white;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 800;
+  margin-left: auto;
+}
+
 .drink-pill-card:active {
   transform: scale(0.97);
 }
@@ -1197,6 +1422,29 @@ body {
   }
   .drink-pill-icon {
     font-size: 22px;
+  }
+  .btn-fav-drink {
+    padding: 8px 4px;
+    min-height: 64px;
+    border-radius: 14px;
+  }
+  .fav-drink-icon {
+    font-size: 22px;
+  }
+  .fav-drink-name {
+    font-size: 11px;
+    max-width: 62px;
+  }
+  .btn-subrow-pill, .btn-subrow-fav-edit {
+    font-size: 10.5px;
+    padding: 6px 9px;
+  }
+  .last-tally-bar {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+  .last-tally-info {
+    font-size: 11px;
   }
 }
 

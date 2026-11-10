@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <script>
     // Force cache bust if new version released (e.g. homescreen / Safari cache)
-    const APP_BUILD_VERSION = '5.1';
+    const APP_BUILD_VERSION = '5.2';
     try {
       const saved = localStorage.getItem('ksa_app_build_version');
       if (saved !== APP_BUILD_VERSION) {
@@ -24,13 +24,13 @@
     } catch (e) {}
   </script>
   <!-- Favicon & Touch Icons for iOS and Android -->
-  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=5.1">
-  <link rel="alternate icon" type="image/png" href="./favicon.png?v=5.1">
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=5.1">
-  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=5.1">
-  <link rel="apple-touch-icon-precomposed" href="./apple-touch-icon.png?v=5.1">
-  <link rel="manifest" href="./manifest.json?v=5.1">
-  <link rel="stylesheet" href="./style.css?v=5.1">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=5.2">
+  <link rel="alternate icon" type="image/png" href="./favicon.png?v=5.2">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=5.2">
+  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=5.2">
+  <link rel="apple-touch-icon-precomposed" href="./apple-touch-icon.png?v=5.2">
+  <link rel="manifest" href="./manifest.json?v=5.2">
+  <link rel="stylesheet" href="./style.css?v=5.2">
   <!-- jsPDF and autoTable for instant PDF downloads (deferred for maximum page speed) -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -80,25 +80,37 @@
       <div class="my-quick-top">
         <div class="my-user-greeting">
           Jij: <strong class="my-user-name" id="myUserName">Kies je naam</strong>
-          <button class="switch-user-link" id="btnSwitchUser">(wijzig)</button>
+          <button class="switch-user-link" id="btnSwitchUser" title="Wissel van persoon">(wijzig)</button>
         </div>
         <span class="my-tally-count" id="myUserCount">0 strepen</span>
       </div>
 
-      <!-- Quick Action 1-Tap Button -->
-      <div class="my-action-row" id="myActionRow">
-        <button class="btn-pill-primary" id="btnMyQuickBeer">
-          <span id="quickAddLabel">🍺 +1 Pintje</span>
+      <!-- 3 Favoriete Drankjes (1-Tap Direct Turven) -->
+      <div class="my-fav-grid" id="myFavGrid">
+        <!-- Dynamisch gegenereerd: 3 grote favoriet knoppen -->
+      </div>
+
+      <!-- Subrow: Ander drankje kiezen + Favorieten bewerken -->
+      <div class="my-fav-subrow">
+        <button class="btn-subrow-pill" id="btnOpenOtherDrinks" title="Kies een ander drankje uit het volledige assortiment">
+          <span>🥤</span> Ander drankje...
+        </button>
+        <button class="btn-subrow-fav-edit" id="btnEditFavorites" title="Kies jouw 3 favoriete drankjes die altijd bovenaan staan">
+          ⭐ Favorieten (wijzig)
         </button>
       </div>
 
-      <!-- Explicit Drink Selector Pill -->
-      <button class="btn-pill-drink-selector" id="btnMyQuickChoice" title="Kies welk drankje geturfd wordt">
-        <span class="pill-selector-left">
-          <span>🥤</span> Drank:
-        </span>
-        <span class="pill-selector-badge" id="currentDrinkBadge">Pintje 🍺 (wijzig)</span>
-      </button>
+      <!-- 1-Minuut Drankje Corrigeren Strook (Zichtbaar 60s na elk streepje) -->
+      <div class="last-tally-bar" id="lastTallyCorrectionBar" style="display: none;">
+        <div class="last-tally-info">
+          <span>Juist geturfd:</span>
+          <strong id="lastTallyDrinkDisplay">🍺 +1 Pintje</strong>
+          <span class="last-tally-timer" id="lastTallyTimerDisplay">60s</span>
+        </div>
+        <button class="btn-change-last-drink" id="btnChangeLastDrink" title="Fout drankje gekozen? Wijzig enkel de dranksoort van dit streepje">
+          ✏️ Wijzig drankje
+        </button>
+      </div>
     </section>
 
     <!-- Mini Leaderboard (Top 3 Grootste Drinkers) -->
@@ -453,12 +465,65 @@
     </div>
   </div>
 
+  <!-- Modal: Kies jouw 3 Favoriete Drankjes -->
+  <div class="modal-overlay" id="favoritesModal">
+    <div class="bottom-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <span class="sheet-title">⭐ Kies 3 Favorieten</span>
+        <button class="sheet-close-btn" id="btnCloseFavoritesModal">✕</button>
+      </div>
+
+      <div class="pin-prompt-box" style="margin-bottom: 10px;">
+        <div class="pin-user-label" id="favTargetUserName">Kies jouw favorieten</div>
+        <div class="pin-sub-label">Selecteer 3 drankjes die altijd groot bovenaan staan om in 1 tik te turven.</div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 0 4px;">
+        <span style="font-size: 11.5px; font-weight: 700; color: #5a4025;">Beschikbare dranken:</span>
+        <span class="fav-count-badge" id="favCountBadge">3 / 3 gekozen</span>
+      </div>
+
+      <div class="sheet-scroll-body">
+        <div class="drinks-grid" id="favoritesListGrid"></div>
+      </div>
+
+      <div style="margin-top: 14px;">
+        <button class="btn-primary-action" id="btnSaveFavorites" style="width: 100%; padding: 13px; font-size: 15px; border-radius: 999px;">
+          ⭐ Opslaan als favorieten
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Laatste Streepje Drankje Wijzigen (binnen 1 minuut) -->
+  <div class="modal-overlay" id="changeDrinkModal">
+    <div class="bottom-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <span class="sheet-title">✏️ Drankje Wijzigen</span>
+        <button class="sheet-close-btn" id="btnCloseChangeDrinkModal">✕</button>
+      </div>
+
+      <div class="pin-prompt-box" style="margin-bottom: 10px; background: #fff8ec; border-color: #f59e0b;">
+        <div class="pin-user-label" id="changeDrinkTargetName">...</div>
+        <div class="pin-sub-label" style="color: #92400e;">
+          <strong>Let op:</strong> Aantal strepen blijft gelijk! Tik op het drankje dat het had moeten zijn:
+        </div>
+      </div>
+
+      <div class="sheet-scroll-body">
+        <div class="drinks-grid" id="changeDrinksListGrid"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notice -->
   <div class="toast-bar" id="toastBar">
     <span id="toastIcon">🍺</span>
     <span id="toastText">Streepje getrokken!</span>
   </div>
 
-  <script defer src="./app.js?v=5.1"></script>
+  <script defer src="./app.js?v=5.2"></script>
 </body>
 </html>

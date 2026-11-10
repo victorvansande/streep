@@ -224,6 +224,14 @@ function saveStoredUser(userObj) {
     setCookie('ksa_user_session', str, 3650);
     activeUser = userObj;
     updateMyQuickBanner();
+
+    // Vraag bij nieuwe login direct om 3 favorieten te kiezen indien nog niet gedaan
+    const configured = localStorage.getItem('ksa_favorites_configured_' + userObj.id);
+    if (!configured) {
+      setTimeout(() => {
+        openFavoritesModal(true);
+      }, 400);
+    }
   } catch (e) {}
 }
 
@@ -234,6 +242,37 @@ function clearStoredUser() {
     activeUser = null;
     updateMyQuickBanner();
   } catch (e) {}
+}
+
+// --- Favoriete Drankjes (Top 3 per persoon) ---
+const DEFAULT_FAVORITES = ['pintje', 'cola', 'cola_zero'];
+
+function getUserFavorites(memberId) {
+  const allDrinks = state.drinks && state.drinks.length > 0 ? state.drinks : DEFAULT_DRINKS;
+  if (!memberId) {
+    return DEFAULT_FAVORITES.map(id => allDrinks.find(d => d.id === id) || allDrinks[0]);
+  }
+  try {
+    const raw = localStorage.getItem('ksa_user_favorites_' + memberId);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const found = parsed.map(id => allDrinks.find(d => d.id === id)).filter(Boolean);
+        if (found.length > 0) return found.slice(0, 3);
+      }
+    }
+  } catch (e) {}
+
+  return DEFAULT_FAVORITES.map(id => allDrinks.find(d => d.id === id) || allDrinks[0]);
+}
+
+function setUserFavorites(memberId, favIds) {
+  if (!memberId || !Array.isArray(favIds)) return;
+  try {
+    localStorage.setItem('ksa_user_favorites_' + memberId, JSON.stringify(favIds));
+    localStorage.setItem('ksa_favorites_configured_' + memberId, 'true');
+  } catch (e) {}
+  updateMyQuickBanner();
 }
 
 function getSelectedDrink() {
@@ -256,10 +295,29 @@ function updateDrinkSelectorUI() {
 function updateMyQuickBanner() {
   const nameEl = document.getElementById('myUserName');
   const countEl = document.getElementById('myUserCount');
-  const actionRow = document.getElementById('myActionRow');
-  const choiceBtn = document.getElementById('btnMyQuickChoice');
+  const favGrid = document.getElementById('myFavGrid');
+  const subrow = document.querySelector('.my-fav-subrow');
 
   updateDrinkSelectorUI();
+
+  const favDrinks = getUserFavorites(activeUser ? activeUser.id : null);
+
+  if (favGrid) {
+    favGrid.innerHTML = favDrinks.map((d, index) => {
+      const isFirst = index === 0;
+      return `
+        <button class="btn-fav-drink ${isFirst ? 'fav-highlight' : ''}" 
+          onclick="window.app.quickAddFav('${d.id}')" 
+          title="+1 ${d.name} turven">
+          <span class="fav-drink-icon">${d.icon}</span>
+          <div class="fav-drink-meta">
+            <span class="fav-drink-plus">+1</span>
+            <span class="fav-drink-name">${d.name}</span>
+          </div>
+        </button>
+      `;
+    }).join('');
+  }
 
   if (activeUser && state.members) {
     const member = state.members.find(m => m.id === activeUser.id);
@@ -267,19 +325,82 @@ function updateMyQuickBanner() {
       nameEl.textContent = member.name;
       const euro = (member.tallies * (state.pricePerTally || 1.0)).toFixed(2).replace('.', ',');
       countEl.textContent = `${member.tallies} strepen (€ ${euro})`;
-      actionRow.style.opacity = '1';
-      actionRow.style.pointerEvents = 'auto';
-      choiceBtn.style.opacity = '1';
-      choiceBtn.style.pointerEvents = 'auto';
+      if (favGrid) {
+        favGrid.style.opacity = '1';
+        favGrid.style.pointerEvents = 'auto';
+      }
+      if (subrow) {
+        subrow.style.opacity = '1';
+        subrow.style.pointerEvents = 'auto';
+      }
       return;
     }
   }
 
   nameEl.textContent = 'Kies wie je bent';
   countEl.textContent = 'Tik om te kiezen';
-  actionRow.style.opacity = '0.4';
-  actionRow.style.pointerEvents = 'none';
-  choiceBtn.style.opacity = '0.5';
+  if (favGrid) {
+    favGrid.style.opacity = '0.5';
+    favGrid.style.pointerEvents = 'auto';
+  }
+  if (subrow) {
+    subrow.style.opacity = '0.6';
+  }
+}
+
+// --- 1-Minuut Drankje Corrigeren Strook ---
+let lastTallyRecord = null;
+let lastTallyTimerInterval = null;
+
+function setLastTallyRecord(rec) {
+  lastTallyRecord = rec;
+  try {
+    sessionStorage.setItem('ksa_last_tally', JSON.stringify(rec));
+  } catch (e) {}
+  updateLastTallyUI();
+}
+
+function updateLastTallyUI() {
+  const bar = document.getElementById('lastTallyCorrectionBar');
+  const display = document.getElementById('lastTallyDrinkDisplay');
+  const timer = document.getElementById('lastTallyTimerDisplay');
+  if (!bar) return;
+
+  if (!lastTallyRecord) {
+    bar.style.display = 'none';
+    if (lastTallyTimerInterval) {
+      clearInterval(lastTallyTimerInterval);
+      lastTallyTimerInterval = null;
+    }
+    return;
+  }
+
+  const elapsed = Math.floor((Date.now() - lastTallyRecord.timestamp) / 1000);
+  const remaining = 60 - elapsed;
+
+  if (remaining <= 0) {
+    lastTallyRecord = null;
+    try { sessionStorage.removeItem('ksa_last_tally'); } catch (e) {}
+    bar.style.display = 'none';
+    if (lastTallyTimerInterval) {
+      clearInterval(lastTallyTimerInterval);
+      lastTallyTimerInterval = null;
+    }
+    return;
+  }
+
+  bar.style.display = 'flex';
+  if (display) {
+    display.textContent = `${lastTallyRecord.drinkIcon} +1 ${lastTallyRecord.drinkName}`;
+    display.title = `Geturfd voor ${lastTallyRecord.memberName}`;
+  }
+  if (timer) {
+    timer.textContent = `${remaining}s`;
+  }
+
+  if (!lastTallyTimerInterval) {
+    lastTallyTimerInterval = setInterval(updateLastTallyUI, 1000);
+  }
 }
 
 function updateAdminBar() {
@@ -493,6 +614,22 @@ function applySyncEvent(ev, isLocalOrigin = false) {
       stateChanged = true;
       break;
     }
+    case 'change_drink': {
+      const member = state.members.find(m => m.id === ev.memberId);
+      if (member) {
+        if (!member.drinks) member.drinks = {};
+        const oldId = ev.oldDrinkId;
+        const newId = ev.newDrinkId;
+        if (oldId && (member.drinks[oldId] || 0) > 0) {
+          member.drinks[oldId] = Math.max(0, (member.drinks[oldId] || 0) - 1);
+        }
+        if (newId) {
+          member.drinks[newId] = (member.drinks[newId] || 0) + 1;
+        }
+        stateChanged = true;
+      }
+      break;
+    }
   }
 
   if (stateChanged) {
@@ -559,12 +696,10 @@ function isLiveConnected() {
 // Optimistic UI: Gebruikers hoeven NOOIT te wachten op een trage verbinding!
 // Knoppen blijven altijd direct klikbaar, data wordt via persistente outbox gesynchroniseerd.
 function updateTallyButtonsLockState() {
-  const quickBeer = document.getElementById('btnMyQuickBeer');
-  if (quickBeer) {
-    quickBeer.style.opacity = '1';
-    quickBeer.style.cursor = 'pointer';
-    quickBeer.title = '';
-  }
+  document.querySelectorAll('.btn-fav-drink').forEach(btn => {
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+  });
 
   document.querySelectorAll('.btn-row-add-pill').forEach(btn => {
     btn.style.opacity = '1';
@@ -729,6 +864,10 @@ function handleIncomingCloudEvent(ev) {
     showToast(`🗑️ Alle strepen gewist door admin`, '🗑️');
   } else if (ev.type === 'reset_all_pins' && ev.from !== myClientId) {
     showToast(`🔑 Pincodes gereset door admin`, '🔑');
+  } else if (ev.type === 'change_drink' && ev.from !== myClientId) {
+    const oldD = state.drinks.find(d => d.id === ev.oldDrinkId) || { name: 'Drank' };
+    const newD = state.drinks.find(d => d.id === ev.newDrinkId) || { name: 'Drank', icon: '🥤' };
+    showToast(`🔄 ${ev.memberName || 'Iemand'} wijzigde ${oldD.name} naar ${newD.name}!`, newD.icon);
   }
 
   const changed = applySyncEvent(ev, false);
@@ -1321,6 +1460,30 @@ window.app = {
     openDrinkPicker(targetMemberForDrink);
   },
 
+  selectAndTallyDrink: (drinkId) => {
+    selectAndTallyDrink(drinkId);
+  },
+
+  quickAddFav: (drinkId) => {
+    quickAddFav(drinkId);
+  },
+
+  openFavoritesModal: () => {
+    openFavoritesModal();
+  },
+
+  toggleFavoriteDrink: (drinkId) => {
+    toggleFavoriteDrink(drinkId);
+  },
+
+  openChangeLastDrinkModal: () => {
+    openChangeLastDrinkModal();
+  },
+
+  changeLastTallyDrink: (newDrinkId) => {
+    changeLastTallyDrink(newDrinkId);
+  },
+
   onSelectUserChoice: (memberId) => {
     closeSelectUserModal();
     const member = state.members.find(m => m.id === memberId);
@@ -1422,6 +1585,17 @@ window.app = {
     playMarkerSound(count);
     triggerHaptic('heavy');
     showToast(`${count > 0 ? '+' + count : count} streep voor lid (Admin)`, '🔑');
+    if (count > 0) {
+      const member = state.members.find(m => m.id === memberId);
+      setLastTallyRecord({
+        memberId,
+        memberName: member ? member.name : 'Lid',
+        drinkId: currentDrink.id,
+        drinkName: currentDrink.name,
+        drinkIcon: currentDrink.icon,
+        timestamp: Date.now()
+      });
+    }
   },
 
   adminSetTalliesPrompt: async (memberId, currentVal) => {
@@ -1545,7 +1719,7 @@ async function submitPinAction(pin) {
   // Pincode geverifieerd! Ontgrendel dit lid 60 seconden lang op dit apparaat
   unlockMemberPin(action.memberId);
 
-  const currentDrink = getSelectedDrink();
+  const currentDrink = state.drinks.find(d => d.id === (action.drinkId || selectedDrinkId)) || state.drinks[0];
 
   publishCloudEvent({
     type: 'tally',
@@ -1557,6 +1731,19 @@ async function submitPinAction(pin) {
   playMarkerSound(action.count || 1);
   triggerHaptic('heavy');
   showToast(`+${action.count || 1} streep voor ${action.memberName}! 🔓 (1 min ontgrendeld)`, '✍️');
+
+  if ((action.count || 1) > 0) {
+    const talliedDrink = state.drinks.find(d => d.id === (action.drinkId || currentDrink.id)) || currentDrink;
+    setLastTallyRecord({
+      memberId: action.memberId,
+      memberName: action.memberName,
+      drinkId: talliedDrink.id,
+      drinkName: talliedDrink.name,
+      drinkIcon: talliedDrink.icon,
+      timestamp: Date.now()
+    });
+  }
+
   closePinModal();
   renderMembers();
 }
@@ -1626,23 +1813,23 @@ async function submitNewPin() {
   renderMembers();
 }
 
-// Drink Modal
+// Drink Modal (Volledig assortiment)
 function openDrinkPicker(memberId) {
-  targetMemberForDrink = memberId;
-  const member = state.members.find(m => m.id === memberId);
-  document.getElementById('drinkTargetName').textContent = member ? member.name : (activeUser ? activeUser.name : 'Leiding');
+  targetMemberForDrink = memberId || (activeUser ? activeUser.id : null);
+  const member = state.members.find(m => m.id === targetMemberForDrink);
+  document.getElementById('drinkTargetName').textContent = member ? `Voor ${member.name}` : 'Kies een drankje';
 
   const grid = document.getElementById('drinksListGrid');
   let html = '';
   (state.drinks || []).forEach(d => {
-    const sel = d.id === selectedDrinkId ? 'selected' : '';
     html += `
-      <div class="drink-pill-card ${sel}" onclick="window.app.selectDrinkItem('${d.id}')">
+      <div class="drink-pill-card" onclick="window.app.selectAndTallyDrink('${d.id}')">
         <span class="drink-pill-icon">${d.icon}</span>
-        <div>
+        <div style="flex: 1; min-width: 0;">
           <div class="drink-pill-name">${d.name}</div>
-          <div class="drink-pill-price">€ 1,00</div>
+          <div class="drink-pill-price">1 streep (€ 1,00)</div>
         </div>
+        <span style="font-size: 11.5px; font-weight: 800; color: #b91c1c; margin-left: auto;">+1 ➜</span>
       </div>
     `;
   });
@@ -1655,16 +1842,284 @@ function closeDrinkModal() {
   targetMemberForDrink = null;
 }
 
+function selectAndTallyDrink(drinkId) {
+  const drink = state.drinks.find(d => d.id === drinkId) || state.drinks[0];
+  closeDrinkModal();
+
+  if (!targetMemberForDrink) {
+    if (!activeUser) {
+      openSelectUserModal();
+      return;
+    }
+    targetMemberForDrink = activeUser.id;
+  }
+
+  const member = state.members.find(m => m.id === targetMemberForDrink);
+  if (!member) return;
+
+  if (activeUser && activeUser.id === member.id) {
+    if (!member.hasPin) {
+      openSetupPinModal(member.id);
+      return;
+    }
+    directTally(member.id, 1, drink.id, member.name, drink.name);
+    return;
+  }
+
+  if (adminPassword) {
+    window.app.adminTally(member.id, 1);
+    return;
+  }
+
+  if (!member.hasPin) {
+    openSetupPinModal(member.id);
+    return;
+  }
+
+  if (isMemberPinUnlocked(member.id)) {
+    unlockMemberPin(member.id);
+    directTally(member.id, 1, drink.id, member.name, drink.name);
+    renderMembers();
+    return;
+  }
+
+  openPinModal({
+    type: 'tally',
+    memberId: member.id,
+    memberName: member.name,
+    count: 1,
+    drinkId: drink.id,
+    drinkName: drink.name
+  });
+}
+
+function quickAddFav(drinkId) {
+  if (!activeUser) {
+    openSelectUserModal();
+    return;
+  }
+  const member = state.members.find(m => m.id === activeUser.id);
+  if (!member) {
+    openSelectUserModal();
+    return;
+  }
+  if (!member.hasPin) {
+    openSetupPinModal(activeUser.id);
+    return;
+  }
+  const drink = state.drinks.find(d => d.id === drinkId) || state.drinks[0];
+  directTally(activeUser.id, 1, drink.id, activeUser.name, drink.name);
+}
+
+// --- Favorieten Modal Beheer ---
+let tempSelectedFavorites = [];
+
+function openFavoritesModal(isPrompt = false) {
+  const modal = document.getElementById('favoritesModal');
+  const targetLabel = document.getElementById('favTargetUserName');
+  if (!modal) return;
+
+  const currentMember = activeUser ? state.members.find(m => m.id === activeUser.id) : null;
+  if (currentMember) {
+    targetLabel.textContent = `Voor ${currentMember.name}`;
+    const existing = getUserFavorites(currentMember.id);
+    tempSelectedFavorites = existing.map(d => d.id);
+  } else {
+    targetLabel.textContent = 'Kies jouw favorieten';
+    tempSelectedFavorites = ['pintje', 'cola', 'cola_zero'];
+  }
+
+  renderFavoritesModalGrid();
+  modal.classList.add('open');
+}
+
+function closeFavoritesModal() {
+  const modal = document.getElementById('favoritesModal');
+  if (modal) modal.classList.remove('open');
+}
+
+function renderFavoritesModalGrid() {
+  const grid = document.getElementById('favoritesListGrid');
+  const badge = document.getElementById('favCountBadge');
+  if (!grid) return;
+
+  if (badge) {
+    badge.textContent = `${tempSelectedFavorites.length} / 3 gekozen`;
+  }
+
+  let html = '';
+  (state.drinks || []).forEach(d => {
+    const isSelected = tempSelectedFavorites.includes(d.id);
+    const orderIndex = tempSelectedFavorites.indexOf(d.id);
+    const orderTag = isSelected ? `<span class="fav-order-tag">⭐ #${orderIndex + 1}</span>` : '';
+    html += `
+      <div class="drink-pill-card ${isSelected ? 'fav-selected' : ''}" onclick="window.app.toggleFavoriteDrink('${d.id}')">
+        <span class="drink-pill-icon">${d.icon}</span>
+        <div style="flex: 1; min-width: 0;">
+          <div class="drink-pill-name">${d.name}</div>
+          <div class="drink-pill-price">1 streep (€ 1,00)</div>
+        </div>
+        ${orderTag}
+      </div>
+    `;
+  });
+  grid.innerHTML = html;
+}
+
+function toggleFavoriteDrink(drinkId) {
+  triggerHaptic('light');
+  const idx = tempSelectedFavorites.indexOf(drinkId);
+  if (idx >= 0) {
+    if (tempSelectedFavorites.length > 1) {
+      tempSelectedFavorites.splice(idx, 1);
+    } else {
+      showToast('Kies minstens 1 favoriet drankje!', '⚠️');
+    }
+  } else {
+    if (tempSelectedFavorites.length < 3) {
+      tempSelectedFavorites.push(drinkId);
+    } else {
+      // Wissel de 3de favoriet om
+      tempSelectedFavorites[2] = drinkId;
+    }
+  }
+  renderFavoritesModalGrid();
+}
+
+function saveFavoritesFromModal() {
+  if (!activeUser) {
+    closeFavoritesModal();
+    openSelectUserModal();
+    return;
+  }
+  if (tempSelectedFavorites.length === 0) {
+    showToast('Kies minstens 1 favoriet!', '⚠️');
+    return;
+  }
+
+  setUserFavorites(activeUser.id, tempSelectedFavorites);
+  closeFavoritesModal();
+  triggerHaptic('medium');
+  playSuccessChime();
+  showToast('⭐ Favorieten opgeslagen!', '⭐');
+}
+
+// --- 1-Minuut Drankje Corrigeren Modal ---
+function openChangeLastDrinkModal() {
+  if (!lastTallyRecord) {
+    showToast('Geen recent streepje om te wijzigen (of 1 minuut is verstreken)', '⏱️');
+    return;
+  }
+  const elapsed = (Date.now() - lastTallyRecord.timestamp) / 1000;
+  if (elapsed >= 60) {
+    showToast('De minuut om het drankje te wijzigen is verstreken ⏱️', '⏱️');
+    lastTallyRecord = null;
+    updateLastTallyUI();
+    return;
+  }
+
+  const modal = document.getElementById('changeDrinkModal');
+  const targetLabel = document.getElementById('changeDrinkTargetName');
+  const grid = document.getElementById('changeDrinksListGrid');
+  if (!modal || !grid) return;
+
+  targetLabel.textContent = `Voor ${lastTallyRecord.memberName} (Huidig: ${lastTallyRecord.drinkIcon} ${lastTallyRecord.drinkName})`;
+
+  let html = '';
+  (state.drinks || []).forEach(d => {
+    const isCurrent = d.id === lastTallyRecord.drinkId;
+    html += `
+      <div class="drink-pill-card ${isCurrent ? 'current-drink' : ''}" onclick="window.app.changeLastTallyDrink('${d.id}')">
+        <span class="drink-pill-icon">${d.icon}</span>
+        <div style="flex: 1; min-width: 0;">
+          <div class="drink-pill-name">${d.name}</div>
+          <div class="drink-pill-price">1 streep (€ 1,00)</div>
+        </div>
+        ${isCurrent ? '<span style="font-size: 10.5px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a; padding: 2px 7px; border-radius: 999px; font-weight: 800; margin-left: auto;">Huidig</span>' : '<span style="font-size: 11px; color: #059669; font-weight: 700; margin-left: auto;">Kies ➜</span>'}
+      </div>
+    `;
+  });
+  grid.innerHTML = html;
+  modal.classList.add('open');
+}
+
+function closeChangeDrinkModal() {
+  const modal = document.getElementById('changeDrinkModal');
+  if (modal) modal.classList.remove('open');
+}
+
+function changeLastTallyDrink(newDrinkId) {
+  if (!lastTallyRecord) return;
+  const elapsed = (Date.now() - lastTallyRecord.timestamp) / 1000;
+  if (elapsed >= 60) {
+    showToast('De minuut om het drankje te wijzigen is verstreken ⏱️', '⏱️');
+    closeChangeDrinkModal();
+    lastTallyRecord = null;
+    updateLastTallyUI();
+    return;
+  }
+
+  const oldDrinkId = lastTallyRecord.drinkId;
+  if (oldDrinkId === newDrinkId) {
+    closeChangeDrinkModal();
+    return;
+  }
+
+  const member = state.members.find(m => m.id === lastTallyRecord.memberId);
+  if (!member) {
+    closeChangeDrinkModal();
+    return;
+  }
+
+  const newDrink = state.drinks.find(d => d.id === newDrinkId) || { name: 'Drankje', icon: '🥤' };
+  const oldDrink = state.drinks.find(d => d.id === oldDrinkId) || { name: 'Drankje', icon: '🍺' };
+
+  // Sync event: enkel de drankcategorie wisselt, totaal aantal strepen blijft exact behouden!
+  publishCloudEvent({
+    type: 'change_drink',
+    memberId: member.id,
+    memberName: member.name,
+    oldDrinkId: oldDrinkId,
+    newDrinkId: newDrinkId
+  });
+
+  lastTallyRecord.drinkId = newDrinkId;
+  lastTallyRecord.drinkName = newDrink.name;
+  lastTallyRecord.drinkIcon = newDrink.icon;
+  try {
+    sessionStorage.setItem('ksa_last_tally', JSON.stringify(lastTallyRecord));
+  } catch (e) {}
+
+  closeChangeDrinkModal();
+  updateLastTallyUI();
+  playSuccessChime();
+  triggerHaptic('medium');
+  showToast(`✓ Gewijzigd naar ${newDrink.name} ${newDrink.icon}!`, newDrink.icon);
+}
+
 function directTally(memberId, count, drinkId, memberName, drinkName) {
+  const drink = state.drinks.find(d => d.id === drinkId) || { name: drinkName || 'Drankje', icon: '🍺' };
+
   publishCloudEvent({
     type: 'tally',
     memberId,
     count,
-    drinkId
+    drinkId: drink.id
   });
   playMarkerSound(count);
   triggerHaptic('heavy');
-  showToast(`+${count} ${drinkName || 'drank'} voor ${memberName}!`, '✍️');
+  showToast(`+${count} ${drink.name} voor ${memberName}! (Tik om drankje te wijzigen)`, drink.icon);
+
+  if (count > 0) {
+    setLastTallyRecord({
+      memberId,
+      memberName: memberName || 'Leiding',
+      drinkId: drink.id,
+      drinkName: drink.name,
+      drinkIcon: drink.icon,
+      timestamp: Date.now()
+    });
+  }
 }
 
 // Initial Loading
@@ -1679,10 +2134,32 @@ async function initApp() {
   renderAdminMemberList();
   renderMiniLeaderboard();
   updateDrinkSelectorUI();
+  updateMyQuickBanner();
 
-  if (!activeUser && !adminPassword) {
+  // Controleer of de actieve gebruiker al favorieten heeft gekozen
+  if (activeUser) {
+    const configured = localStorage.getItem('ksa_favorites_configured_' + activeUser.id);
+    if (!configured) {
+      setTimeout(() => {
+        openFavoritesModal(true);
+      }, 600);
+    }
+  } else if (!adminPassword) {
     setTimeout(openSelectUserModal, 500);
   }
+
+  // Herstel eventuele lopende 1-minuut correctietimer na herladen
+  try {
+    const savedLast = sessionStorage.getItem('ksa_last_tally');
+    if (savedLast) {
+      const rec = JSON.parse(savedLast);
+      if (Date.now() - rec.timestamp < 60000) {
+        setLastTallyRecord(rec);
+      } else {
+        sessionStorage.removeItem('ksa_last_tally');
+      }
+    }
+  } catch (e) {}
 
   connectCloudSync();
   fetchCloudHistory();
@@ -1724,6 +2201,57 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnSwitchUser').addEventListener('click', openSelectUserModal);
   document.getElementById('btnCloseSelectUser').addEventListener('click', closeSelectUserModal);
 
+  // Subrow buttons in Hero Banner
+  const btnOtherDrinks = document.getElementById('btnOpenOtherDrinks');
+  if (btnOtherDrinks) {
+    btnOtherDrinks.addEventListener('click', () => {
+      openDrinkPicker(activeUser ? activeUser.id : null);
+    });
+  }
+
+  const btnEditFavs = document.getElementById('btnEditFavorites');
+  if (btnEditFavs) {
+    btnEditFavs.addEventListener('click', () => {
+      openFavoritesModal();
+    });
+  }
+
+  // Favorites Modal Buttons
+  const btnCloseFav = document.getElementById('btnCloseFavoritesModal');
+  if (btnCloseFav) {
+    btnCloseFav.addEventListener('click', closeFavoritesModal);
+  }
+  const btnSaveFav = document.getElementById('btnSaveFavorites');
+  if (btnSaveFav) {
+    btnSaveFav.addEventListener('click', saveFavoritesFromModal);
+  }
+
+  // Change Last Drink Buttons
+  const btnChangeLast = document.getElementById('btnChangeLastDrink');
+  if (btnChangeLast) {
+    btnChangeLast.addEventListener('click', openChangeLastDrinkModal);
+  }
+  const btnCloseChange = document.getElementById('btnCloseChangeDrinkModal');
+  if (btnCloseChange) {
+    btnCloseChange.addEventListener('click', closeChangeDrinkModal);
+  }
+
+  // Toast bar: tik op melding om direct drankje te wijzigen indien binnen 1 minuut
+  const toastBar = document.getElementById('toastBar');
+  if (toastBar) {
+    toastBar.addEventListener('click', () => {
+      if (lastTallyRecord) {
+        openChangeLastDrinkModal();
+      }
+    });
+  }
+
+  // Drink Modal Close
+  const btnCloseDrink = document.getElementById('btnCloseDrinkModal');
+  if (btnCloseDrink) {
+    btnCloseDrink.addEventListener('click', closeDrinkModal);
+  }
+
   // Add Visitor Modal
   document.getElementById('btnOpenAddVisitor').addEventListener('click', openAddVisitorModal);
   document.getElementById('btnCloseAddVisitor').addEventListener('click', closeAddVisitorModal);
@@ -1752,27 +2280,32 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast(`${name} toegevoegd!`, '➕');
   });
 
-  // Dedicated Drink Selector Button in Quick Bar
-  document.getElementById('btnMyQuickChoice').addEventListener('click', () => {
-    openDrinkPicker(activeUser ? activeUser.id : null);
-  });
+  // Dedicated Drink Selector Button in Quick Bar (Legacy fallback)
+  const legacyChoice = document.getElementById('btnMyQuickChoice');
+  if (legacyChoice) {
+    legacyChoice.addEventListener('click', () => {
+      openDrinkPicker(activeUser ? activeUser.id : null);
+    });
+  }
 
-  // Quick Action Buttons (1-TAP ON PHONE)
-  document.getElementById('btnMyQuickBeer').addEventListener('click', () => {
-    if (activeUser) {
-      const member = state.members.find(m => m.id === activeUser.id);
-      if (member && !member.hasPin) {
-        openSetupPinModal(activeUser.id);
-        return;
+  const legacyBeer = document.getElementById('btnMyQuickBeer');
+  if (legacyBeer) {
+    legacyBeer.addEventListener('click', () => {
+      if (activeUser) {
+        const member = state.members.find(m => m.id === activeUser.id);
+        if (member && !member.hasPin) {
+          openSetupPinModal(activeUser.id);
+          return;
+        }
+        const current = getSelectedDrink();
+        directTally(activeUser.id, 1, current.id, activeUser.name, current.name);
+      } else {
+        openSelectUserModal();
       }
-      const current = getSelectedDrink();
-      directTally(activeUser.id, 1, current.id, activeUser.name, current.name);
-    } else {
-      openSelectUserModal();
-    }
-  });
+    });
+  }
 
-  // Drink modal confirm selection
+  // Drink modal confirm selection (Legacy fallback)
   const btnConfirmDrink = document.getElementById('btnConfirmDrinkSelection');
   if (btnConfirmDrink) {
     btnConfirmDrink.addEventListener('click', () => {
